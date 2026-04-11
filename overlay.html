@@ -139,7 +139,7 @@
     /* ── COLUMN HEADERS ── */
     #col-hdrs {
       display: grid;
-      grid-template-columns: 76px 76px 1fr 300px 90px 90px 90px 112px;
+      grid-template-columns: 76px 76px 1fr 90px 90px 90px 112px;
       padding: 0 52px;
       height: 40px;
       align-items: center;
@@ -179,7 +179,7 @@
     /* ── DRIVER ROW ── */
     .row {
       display: grid;
-      grid-template-columns: 76px 76px 1fr 300px 90px 90px 90px 112px;
+      grid-template-columns: 76px 76px 1fr 90px 90px 90px 112px;
       padding: 0 52px;
       height: 63px;
       align-items: center;
@@ -224,14 +224,22 @@
       background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.24); color: var(--cyan);
     }
 
+    /* driver name + car subtitle stacked in one cell */
+    .driver-cell {
+      min-width: 0;
+      padding-right: 18px;
+    }
+
     .driver-name {
-      font-size: 21px; font-weight: 700; color: var(--text);
-      letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px;
+      font-size: 22px; font-weight: 700; color: var(--text);
+      letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.15;
     }
 
     .car-name {
-      font-size: 14px; font-weight: 500; color: var(--dim);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px;
+      font-size: 13px; font-weight: 500; color: var(--dim);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.2; margin-top: 2px;
     }
 
     .rpt { text-align: center; font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 700; color: var(--text); }
@@ -316,8 +324,7 @@
     <div id="col-hdrs">
       <div class="ch c">Pos</div>
       <div class="ch c">No.</div>
-      <div class="ch">Driver</div>
-      <div class="ch">Car</div>
+      <div class="ch">Driver / Car</div>
       <div class="ch c">Rnd 1</div>
       <div class="ch c">Rnd 2</div>
       <div class="ch c">Rnd 3</div>
@@ -491,8 +498,10 @@
         <div class="row ${posClass(d.position)}">
           <div><div class="pos-num ${posNumCls(d.position)}">${d.position}</div></div>
           <div><div class="car-num">${d.carNum}</div></div>
-          <div class="driver-name">${d.id}</div>
-          <div class="car-name">${(d.car || '').trim()}</div>
+          <div class="driver-cell">
+            <div class="driver-name">${d.id}</div>
+            <div class="car-name">${(d.car || '').trim()}</div>
+          </div>
           ${raceCell(r[0])}
           ${raceCell(r[1])}
           ${raceCell(r[2])}
