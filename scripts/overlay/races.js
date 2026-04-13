@@ -21,8 +21,12 @@
 
   function renderCard(element, title, entry) {
     if (!entry) {
-      element.style.opacity = '0';
-      element.innerHTML = '';
+      element.style.opacity = '1';
+      element.innerHTML = `
+        <div class="card-title">${title}</div>
+        <div class="card-driver">Results Pending</div>
+        <div class="card-meta">Awaiting standings sync</div>
+        <div class="card-pts">TBD</div>`;
       return;
     }
 
@@ -86,7 +90,7 @@
     const { state } = app;
     const selectedClass = state.standings[state.classIdx];
     if (!selectedClass) return;
-    const rounds = Math.max(0, ...selectedClass.standings.map(driver => (driver.races || []).length));
+    const rounds = app.roundCount();
     if (rounds === 0) return;
 
     state.podiumRound = state.podiumRound % rounds;

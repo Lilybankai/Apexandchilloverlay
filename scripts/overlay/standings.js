@@ -20,7 +20,29 @@
     return 'none';
   }
 
-  function buildRows(list) {
+  function dynamicGridCols(roundCount) {
+    const raceCols = Array.from({ length: roundCount }, () => '90px').join(' ');
+    return `76px 76px 1fr ${raceCols} 80px 112px`;
+  }
+
+  function updateColumnHeaders(roundCount) {
+    const { elements } = app;
+    if (!elements.colHeaders) return;
+    const roundHeaders = Array.from(
+      { length: roundCount },
+      (_, idx) => `<div class="ch c">Rnd ${idx + 1}</div>`
+    ).join('');
+    elements.colHeaders.style.gridTemplateColumns = dynamicGridCols(roundCount);
+    elements.colHeaders.innerHTML = `
+      <div class="ch c">Pos</div>
+      <div class="ch c">No.</div>
+      <div class="ch">Driver / Car</div>
+      ${roundHeaders}
+      <div class="ch r">Gap</div>
+      <div class="ch r">Points</div>`;
+  }
+
+  function buildRows(list, roundCount) {
     const leaderPoints = list[0]?.championshipPoints ?? 0;
     return list.map(driver => {
       const races = driver.races || [];
@@ -32,8 +54,10 @@
         .map(item => `<span class="dot ${dotClass(item)}"></span>`)
         .join('');
 
+      const raceCells = Array.from({ length: roundCount }, (_, idx) => raceCell(races[idx])).join('');
+
       return `
-        <div class="row ${driver.position === 1 ? 'p1' : driver.position === 2 ? 'p2' : driver.position === 3 ? 'p3' : ''}">
+        <div class="row ${driver.position === 1 ? 'p1' : driver.position === 2 ? 'p2' : driver.position === 3 ? 'p3' : ''}" style="grid-template-columns:${dynamicGridCols(roundCount)}">
           <div><div class="pos-num">${driver.position}</div></div>
           <div><div class="car-num">${driver.carNum}</div></div>
           <div class="driver-cell">
@@ -41,9 +65,7 @@
             <div class="car-name">${(driver.car || '').trim()}</div>
             <div class="form-dots">${dots}</div>
           </div>
-          ${raceCell(races[0])}
-          ${raceCell(races[1])}
-          ${raceCell(races[2])}
+          ${raceCells}
           ${gapHtml}
           <div><div class="pts-val">${driver.championshipPoints}</div><div class="pts-lbl">pts</div></div>
         </div>`;
@@ -108,7 +130,12 @@
 
     state.classIdx = idx;
     state.scrollPos = 0;
-    elements.tableBody.innerHTML = buildRows(selected.standings);
+    const roundsFromData = Math.max(0, ...selected.standings.map(driver => (driver.races || []).length));
+    const completedRounds = app.completedRoundCount();
+    const roundCount = Math.max(roundsFromData, completedRounds);
+    updateColumnHeaders(roundCount);
+    elements.tableBody.style.setProperty('--row-cols', dynamicGridCols(roundCount));
+    elements.tableBody.innerHTML = buildRows(selected.standings, roundCount);
     elements.tableBody.style.transform = 'translateY(0)';
     app.buildClassTags();
     app.reportState();

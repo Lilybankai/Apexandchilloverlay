@@ -26,6 +26,7 @@
         viewStandings: document.getElementById('view-standings'),
         viewRaces: document.getElementById('view-races'),
         viewSchedule: document.getElementById('view-schedule'),
+        colHeaders: document.getElementById('col-hdrs'),
         hdrTitle: document.getElementById('hdr-title'),
         hdrSeason: document.getElementById('hdr-season'),
         classTags: document.getElementById('class-tags'),
@@ -50,6 +51,12 @@
       const cls = this.state.standings[this.state.classIdx];
       if (!cls) return 0;
       return Math.max(0, ...cls.standings.map(driver => (driver.races || []).length));
+    },
+    completedRoundCount() {
+      if (Array.isArray(this.state.meta.rounds) && this.state.meta.rounds.length) {
+        return this.state.meta.rounds.filter(round => round.isFinished).length;
+      }
+      return 0;
     },
     buildClassTags() {
       const cls = this.state.standings[this.state.classIdx];
