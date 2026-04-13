@@ -5,20 +5,46 @@
     try {
       const response = await fetch('/api/simgrid/schedule');
       const data = await response.json();
-      if (!Array.isArray(data) || data.error) return;
+      if (data?.error) return;
 
-      app.state.meta.rounds = data.map((event, idx) => ({
+      const rawEvents = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.events)
+            ? data.events
+            : Array.isArray(data?.results)
+              ? data.results
+              : [];
+      if (!rawEvents.length) return;
+
+      const rounds = rawEvents.map((event, idx) => ({
         index: idx,
-        name: event.name || `Round ${idx + 1}`,
-        date: event.start_date || event.date || null
+        eventId: event.id ?? event.event_id ?? null,
+        name: event.name || event.title || event.track_name || `Round ${idx + 1}`,
+        date: event.start_date || event.starts_at || event.date || event.startDate || null,
+        isFinished: event.status === 'completed' || event.status === 'finished'
       }));
+      const now = Date.now();
+      rounds.forEach(round => {
+        if (!round.isFinished && round.date) {
+          const ts = new Date(round.date).getTime();
+          if (!Number.isNaN(ts) && ts < now) round.isFinished = true;
+        }
+      });
+      const nextRound = rounds.find(round => !round.isFinished);
+      if (nextRound) {
+        nextRound.isNext = true;
+        app.state.meta.nextRace = { name: nextRound.name, date: nextRound.date };
+      }
 
-      if (app.state.meta.rounds[0] && !app.state.meta.nextRace) {
-        app.state.meta.nextRace = {
-          name: app.state.meta.rounds[0].name,
-          date: app.state.meta.rounds[0].date
+      if (!nextRound && rounds.length) {
+        app.state.meta.nextRace = app.state.meta.nextRace || {
+          name: rounds[rounds.length - 1].name,
+          date: rounds[rounds.length - 1].date
         };
       }
+      app.state.meta.rounds = rounds;
     } catch (_) {}
   }
 
@@ -43,7 +69,10 @@
 
     const raceTs = new Date(nextRace.date).getTime();
     const diffMs = raceTs - Date.now();
-    if (diffMs <= 0) return;
+    if (diffMs <= 0) {
+      app.elements.footerInfo.textContent = '';
+      return;
+    }
 
     const totalMinutes = Math.floor(diffMs / 60000);
     const days = Math.floor(totalMinutes / (60 * 24));
@@ -104,19 +133,29 @@
   }
 
   function doSetScreen(nextScreen, skipVeil = false) {
-    app.state.screen = nextScreen === 'races' ? 'races' : 'standings';
+    app.state.screen = nextScreen === 'races' || nextScreen === 'schedule' ? nextScreen : 'standings';
 
     const switchViews = () => {
       app.elements.viewStandings.classList.toggle('active', app.state.screen === 'standings');
       app.elements.viewRaces.classList.toggle('active', app.state.screen === 'races');
-      app.elements.hdrTitle.textContent = app.state.screen === 'races' ? 'Race Results' : 'Championship Standings';
+      app.elements.viewSchedule.classList.toggle('active', app.state.screen === 'schedule');
+      app.elements.hdrTitle.textContent =
+        app.state.screen === 'races'
+          ? 'Race Results'
+          : app.state.screen === 'schedule'
+            ? 'Race Schedule'
+            : 'Championship Standings';
 
       if (app.state.screen === 'standings') {
         clearTimeout(app.state.podiumTimer);
         app.standings.continueScroll();
-      } else {
+      } else if (app.state.screen === 'races') {
         clearTimeout(app.state.timer);
         app.races.startRacesCycle();
+      } else {
+        clearTimeout(app.state.timer);
+        clearTimeout(app.state.podiumTimer);
+        app.schedule.renderSchedule();
       }
       app.reportState();
     };

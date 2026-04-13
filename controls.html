@@ -18,7 +18,7 @@
     .conn-wrap.online .conn-label { color: var(--green); }
     .section { padding: 24px 28px; border-bottom: 1px solid var(--border); }
     .section-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; }
-    .screen-grid, .class-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .screen-grid, .class-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .screen-btn, .class-btn, .ctrl-btn, .reload-btn {
       border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text);
       cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; font-family: 'Orbitron', monospace;
@@ -57,6 +57,7 @@
       <div class="screen-grid">
         <button class="screen-btn active" id="btn-standings" onclick="setScreen('standings')"><span class="btn-icon">📊</span>Standings</button>
         <button class="screen-btn" id="btn-races" onclick="setScreen('races')"><span class="btn-icon">🏆</span>Race Results</button>
+        <button class="screen-btn" id="btn-schedule" onclick="setScreen('schedule')"><span class="btn-icon">🗓</span>Race Schedule</button>
       </div>
     </div>
 
@@ -90,6 +91,7 @@
         <kbd>P</kbd><span class="key-label">Previous class</span>
         <kbd>S</kbd><span class="key-label">Standings screen</span>
         <kbd>W</kbd><span class="key-label">Race results screen</span>
+        <kbd>G</kbd><span class="key-label">Race schedule screen</span>
       </div>
     </div>
   </div>
@@ -162,6 +164,7 @@
       document.getElementById('btn-pause').textContent = state.paused ? 'Resume Scroll' : 'Pause Scroll';
       document.getElementById('btn-standings').classList.toggle('active', state.screen === 'standings');
       document.getElementById('btn-races').classList.toggle('active', state.screen === 'races');
+      document.getElementById('btn-schedule').classList.toggle('active', state.screen === 'schedule');
       document.getElementById('section-class').style.display = state.screen === 'standings' ? '' : 'none';
       document.querySelectorAll('.class-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.idx, 10) === state.classIdx);
@@ -198,6 +201,7 @@
         case 'KeyP': prevClass(); break;
         case 'KeyS': setScreen('standings'); break;
         case 'KeyW': setScreen('races'); break;
+        case 'KeyG': setScreen('schedule'); break;
       }
     });
 

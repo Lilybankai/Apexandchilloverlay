@@ -25,6 +25,7 @@
       this.elements = {
         viewStandings: document.getElementById('view-standings'),
         viewRaces: document.getElementById('view-races'),
+        viewSchedule: document.getElementById('view-schedule'),
         hdrTitle: document.getElementById('hdr-title'),
         hdrSeason: document.getElementById('hdr-season'),
         classTags: document.getElementById('class-tags'),
@@ -39,10 +40,13 @@
         roundSub: document.getElementById('round-sub'),
         cardP1: document.getElementById('card-p1'),
         cardP2: document.getElementById('card-p2'),
-        cardP3: document.getElementById('card-p3')
+        cardP3: document.getElementById('card-p3'),
+        scheduleList: document.getElementById('schedule-list')
       };
     },
     roundCount() {
+      const scheduleRounds = Array.isArray(this.state.meta.rounds) ? this.state.meta.rounds.length : 0;
+      if (scheduleRounds > 0) return scheduleRounds;
       const cls = this.state.standings[this.state.classIdx];
       if (!cls) return 0;
       return Math.max(0, ...cls.standings.map(driver => (driver.races || []).length));
