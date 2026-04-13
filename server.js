@@ -2,7 +2,7 @@ const express = require('express');
 const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
-const SIMGRID_BASE = 'https://gridos.thesimgrid.com';
+const SIMGRID_BASE = 'https://www.thesimgrid.com';
 const SIMGRID_KEY = 'PhEDyzEVPztV4yMJYsmQjKWy';
 const LEAGUE_ID = 23082;
 
@@ -34,6 +34,19 @@ async function simgridFetch(pathname) {
   const data = await response.json();
   simgridCache[url] = { ts: Date.now(), data };
   return data;
+}
+
+async function simgridFetchFirst(paths) {
+  let lastError = null;
+  for (const pathname of paths) {
+    try {
+      return await simgridFetch(pathname);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  const tried = paths.join(', ');
+  throw new Error(`All SimGrid paths failed. Tried: ${tried}. Last error: ${String(lastError?.message || lastError)}`);
 }
 
 // ── SSE endpoint  (overlay + controls both connect here) ─────────────────────
@@ -97,7 +110,10 @@ app.post('/api/command', (req, res) => {
 
 app.get('/api/simgrid/league', async (_req, res) => {
   try {
-    res.json(await simgridFetch(`/api/leagues/${LEAGUE_ID}`));
+    res.json(await simgridFetchFirst([
+      `/api/v1/championships/${LEAGUE_ID}`,
+      `/api/v1/leagues/${LEAGUE_ID}`
+    ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }
@@ -105,7 +121,11 @@ app.get('/api/simgrid/league', async (_req, res) => {
 
 app.get('/api/simgrid/schedule', async (_req, res) => {
   try {
-    res.json(await simgridFetch(`/api/leagues/${LEAGUE_ID}/events`));
+    res.json(await simgridFetchFirst([
+      `/api/v1/championships/${LEAGUE_ID}/rounds`,
+      `/api/v1/championships/${LEAGUE_ID}/races`,
+      `/api/v1/leagues/${LEAGUE_ID}/events`
+    ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }
@@ -113,7 +133,10 @@ app.get('/api/simgrid/schedule', async (_req, res) => {
 
 app.get('/api/simgrid/results/:eventId', async (req, res) => {
   try {
-    res.json(await simgridFetch(`/api/events/${req.params.eventId}/results`));
+    res.json(await simgridFetchFirst([
+      `/api/v1/races/${req.params.eventId}/results`,
+      `/api/v1/events/${req.params.eventId}/results`
+    ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }
