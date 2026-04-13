@@ -4,7 +4,8 @@ const app     = express();
 const PORT    = process.env.PORT || 3000;
 const SIMGRID_BASE = 'https://www.thesimgrid.com';
 const SIMGRID_KEY = 'PhEDyzEVPztV4yMJYsmQjKWy';
-const LEAGUE_ID = 23082;
+const COMMUNITY_ID = 3846;
+const CHAMPIONSHIP_ID = 23082;
 
 // Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
 app.set('trust proxy', 1);
@@ -111,8 +112,8 @@ app.post('/api/command', (req, res) => {
 app.get('/api/simgrid/league', async (_req, res) => {
   try {
     res.json(await simgridFetchFirst([
-      `/api/v1/championships/${LEAGUE_ID}`,
-      `/api/v1/leagues/${LEAGUE_ID}`
+      `/api/v1/championships/${CHAMPIONSHIP_ID}`,
+      `/api/v1/championships?community_id=${COMMUNITY_ID}`
     ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
@@ -122,9 +123,9 @@ app.get('/api/simgrid/league', async (_req, res) => {
 app.get('/api/simgrid/schedule', async (_req, res) => {
   try {
     res.json(await simgridFetchFirst([
-      `/api/v1/championships/${LEAGUE_ID}/rounds`,
-      `/api/v1/championships/${LEAGUE_ID}/races`,
-      `/api/v1/leagues/${LEAGUE_ID}/events`
+      `/api/v1/races?community_id=${COMMUNITY_ID}`,
+      `/api/v1/rounds?community_id=${COMMUNITY_ID}`,
+      `/api/v1/championships?community_id=${COMMUNITY_ID}`
     ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
@@ -134,8 +135,8 @@ app.get('/api/simgrid/schedule', async (_req, res) => {
 app.get('/api/simgrid/results/:eventId', async (req, res) => {
   try {
     res.json(await simgridFetchFirst([
-      `/api/v1/races/${req.params.eventId}/results`,
-      `/api/v1/events/${req.params.eventId}/results`
+      `/api/v1/races/${req.params.eventId}`,
+      `/api/v1/events/${req.params.eventId}`
     ]));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });

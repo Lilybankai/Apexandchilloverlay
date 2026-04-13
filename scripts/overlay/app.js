@@ -21,10 +21,16 @@
       const rounds = rawEvents.map((event, idx) => ({
         index: idx,
         eventId: event.id ?? event.event_id ?? null,
-        name: event.name || event.title || event.track_name || `Round ${idx + 1}`,
+        name: event.display_name || event.race_name || event.name || event.title || event.track_name || `Round ${idx + 1}`,
         date: event.start_date || event.starts_at || event.date || event.startDate || null,
-        isFinished: event.status === 'completed' || event.status === 'finished'
+        isFinished: event.ended === true || event.results_available === true || event.status === 'completed' || event.status === 'finished'
       }));
+      rounds.sort((a, b) => {
+        const ta = a.date ? new Date(a.date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.date ? new Date(b.date).getTime() : Number.POSITIVE_INFINITY;
+        return ta - tb;
+      });
+      rounds.forEach((round, idx) => { round.index = idx; });
       const now = Date.now();
       rounds.forEach(round => {
         if (!round.isFinished && round.date) {
