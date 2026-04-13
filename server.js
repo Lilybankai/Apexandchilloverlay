@@ -6,7 +6,10 @@ const SIMGRID_BASE = 'https://gridos.thesimgrid.com';
 const SIMGRID_KEY = 'PhEDyzEVPztV4yMJYsmQjKWy';
 const LEAGUE_ID = 23082;
 
-app.use(express.json());
+// Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
+app.set('trust proxy', 1);
+
+app.use(express.json({ limit: '256kb' }));
 app.use(express.static(__dirname)); // serves overlay.html, controls.html, data/, etc.
 
 // ── SSE client list & server-side state ──────────────────────────────────────
@@ -53,15 +56,26 @@ app.get('/api/events', (req, res) => {
 // ── GET current state (controls polls this on load) ──────────────────────────
 app.get('/api/state', (req, res) => res.json(serverState));
 
+// ── Lightweight health check (use this to verify proxy → Node is wired) ──────
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'apex-chill-overlay' });
+});
+
 // ── Overlay reports its state back (so controls stays in sync) ───────────────
 app.post('/api/state', (req, res) => {
-  const { classIdx, paused, scrollPos, screen } = req.body;
-  if (classIdx  != null) serverState.classIdx  = classIdx;
-  if (paused    != null) serverState.paused    = paused;
-  if (scrollPos != null) serverState.scrollPos = scrollPos;
-  if (screen    != null) serverState.screen    = screen;
-  broadcast({ type: 'stateUpdate', ...serverState });
-  res.json({ ok: true });
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { classIdx, paused, scrollPos, screen } = body;
+    if (classIdx  != null) serverState.classIdx  = classIdx;
+    if (paused    != null) serverState.paused    = paused;
+    if (scrollPos != null) serverState.scrollPos = scrollPos;
+    if (screen    != null) serverState.screen    = screen;
+    broadcast({ type: 'stateUpdate', ...serverState });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/state', err);
+    res.status(500).json({ ok: false });
+  }
 });
 
 // ── Controls sends a command ──────────────────────────────────────────────────
@@ -112,12 +126,25 @@ function broadcast(data) {
   clients.forEach(c => send(c.res, data));
 }
 
+// Malformed JSON body — body-parser signals via err.type
+app.use((err, _req, res, _next) => {
+  if (err && (err.type === 'entity.parse.failed' || err.status === 400)) {
+    return res.status(400).json({ ok: false, error: 'invalid_json' });
+  }
+  console.error(err);
+  res.status(500).json({ ok: false });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n  Apex & Chill Standings Overlay');
   console.log('  ────────────────────────────────────────');
   console.log(`  OBS source  →  http://localhost:${PORT}/overlay.html`);
   console.log(`  Controls    →  http://localhost:${PORT}/controls.html`);
+  console.log(`  Health      →  http://localhost:${PORT}/api/health`);
+  console.log('  ────────────────────────────────────────');
+  console.log('  Deploy: reverse-proxy /api/* and /api/events to this Node process.');
+  console.log('  Static-only hosting cannot serve POST /api/state (502 = no upstream).');
   console.log('  ────────────────────────────────────────');
   console.log('  Update standings: edit  data/standings.json');
   console.log('  then click "Reload Data" in the controls.\n');

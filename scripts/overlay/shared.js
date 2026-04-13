@@ -59,6 +59,7 @@
       this.elements.footerInfo.textContent = `LMGT3 · ${cls.standings.length} Drivers`;
     },
     reportState() {
+      if (this.state.skipApiReport) return;
       clearTimeout(this.state.reportTick);
       this.state.reportTick = setTimeout(() => {
         fetch('/api/state', {
@@ -70,7 +71,19 @@
             scrollPos: this.state.scrollPos,
             screen: this.state.screen
           })
-        }).catch(() => {});
+        })
+          .then(res => {
+            if (!res.ok) {
+              this.state.apiReportFailCount = (this.state.apiReportFailCount || 0) + 1;
+              if (this.state.apiReportFailCount >= 3) this.state.skipApiReport = true;
+            } else {
+              this.state.apiReportFailCount = 0;
+            }
+          })
+          .catch(() => {
+            this.state.apiReportFailCount = (this.state.apiReportFailCount || 0) + 1;
+            if (this.state.apiReportFailCount >= 3) this.state.skipApiReport = true;
+          });
       }, 350);
     }
   };
