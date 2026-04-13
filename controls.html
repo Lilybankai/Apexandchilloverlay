@@ -5,621 +5,213 @@
   <title>Overlay Controls — Apex &amp; Chill</title>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --cyan:    #00d4ff;
-      --purple:  #b400ff;
-      --green:   #00ff88;
-      --red:     #ff4455;
-      --gold:    #ffd700;
-      --bg:      #06060f;
-      --surface: #0d0d22;
-      --border:  rgba(255,255,255,0.07);
-      --text:    #eaeaf5;
-      --dim:     #556688;
-    }
-
+    :root { --cyan: #00d4ff; --purple: #b400ff; --green: #00ff88; --bg: #06060f; --surface: #0d0d22; --border: rgba(255,255,255,0.07); --text: #eaeaf5; --dim: #556688; }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Rajdhani', 'Arial', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-
-    /* ── PANEL ── */
-    .panel {
-      width: 560px;
-      background: var(--surface);
-      border-radius: 16px;
-      border: 1px solid rgba(0,212,255,0.18);
-      box-shadow: 0 0 60px rgba(0,180,255,0.06);
-      overflow: hidden;
-    }
-
-    /* ── PANEL HEADER ── */
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 22px 28px;
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(90deg, rgba(0,212,255,0.06), rgba(180,0,255,0.04));
-      position: relative;
-    }
-
-    .panel-header::after {
-      content: '';
-      position: absolute;
-      bottom: 0; left: 5%; right: 5%;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
-      opacity: 0.4;
-    }
-
-    .panel-title {
-      font-family: 'Orbitron', monospace;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 4px;
-      color: var(--text);
-      text-transform: uppercase;
-    }
-
-    .panel-sub {
-      font-size: 11px;
-      color: var(--dim);
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      margin-top: 3px;
-    }
-
-    /* ── CONNECTION DOT ── */
-    .conn-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-family: 'Orbitron', monospace;
-      font-size: 10px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-
-    .conn-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: #333;
-      transition: background 0.4s ease, box-shadow 0.4s ease;
-    }
-
-    .conn-label { color: var(--dim); transition: color 0.4s; }
-
-    .conn-wrap.online .conn-dot   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', Arial, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .panel { width: 560px; background: var(--surface); border-radius: 16px; border: 1px solid rgba(0,212,255,0.18); box-shadow: 0 0 60px rgba(0,180,255,0.06); overflow: hidden; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1px solid var(--border); background: linear-gradient(90deg, rgba(0,212,255,0.06), rgba(180,0,255,0.04)); }
+    .panel-title { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; }
+    .panel-sub { font-size: 11px; color: var(--dim); letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+    .conn-wrap { display: flex; align-items: center; gap: 8px; font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+    .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #333; }
+    .conn-wrap.online .conn-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .conn-wrap.online .conn-label { color: var(--green); }
-    .conn-wrap.offline .conn-dot  { background: var(--red); box-shadow: 0 0 8px var(--red); }
-    .conn-wrap.offline .conn-label{ color: var(--red); }
-
-    /* ── SECTIONS ── */
-    .section {
-      padding: 24px 28px;
-      border-bottom: 1px solid var(--border);
+    .section { padding: 24px 28px; border-bottom: 1px solid var(--border); }
+    .section-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; }
+    .screen-grid, .class-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .screen-btn, .class-btn, .ctrl-btn, .reload-btn {
+      border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text);
+      cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; font-family: 'Orbitron', monospace;
     }
-
-    .section-label {
-      font-family: 'Orbitron', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--dim);
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-    }
-
-    /* ── CLASS BUTTONS ── */
-    .class-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .class-btn {
-      padding: 18px 12px;
-      border-radius: 10px;
-      border: 2px solid;
-      background: transparent;
-      cursor: pointer;
-      transition: all 0.25s ease;
-      text-align: center;
-    }
-
-    .class-btn.gt3 {
-      color: var(--green);
-      border-color: rgba(0,255,136,0.3);
-    }
-
-    .class-btn.hypercar {
-      color: var(--red);
-      border-color: rgba(255,68,85,0.3);
-    }
-
-    .class-btn:hover.gt3      { background: rgba(0,255,136,0.07); border-color: rgba(0,255,136,0.6); }
-    .class-btn:hover.hypercar { background: rgba(255,68,85,0.07);  border-color: rgba(255,68,85,0.6); }
-
-    .class-btn.active.gt3 {
-      background: rgba(0,255,136,0.15);
-      border-color: var(--green);
-      box-shadow: 0 0 22px rgba(0,255,136,0.2);
-    }
-
-    .class-btn.active.hypercar {
-      background: rgba(255,68,85,0.15);
-      border-color: var(--red);
-      box-shadow: 0 0 22px rgba(255,68,85,0.2);
-    }
-
-    .class-btn-name {
-      font-family: 'Orbitron', monospace;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      display: block;
-    }
-
-    .class-btn-detail {
-      font-size: 12px;
-      opacity: 0.55;
-      letter-spacing: 1px;
-      margin-top: 4px;
-      display: block;
-    }
-
-    /* ── PLAYBACK GRID ── */
-    .play-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-    }
-
-    /* ── BASE BUTTON ── */
-    .ctrl-btn {
-      padding: 16px 10px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.03);
-      color: var(--text);
-      cursor: pointer;
-      font-family: 'Orbitron', monospace;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      text-align: center;
-      transition: all 0.2s ease;
-      user-select: none;
-    }
-
-    .ctrl-btn:hover:not(:disabled) {
-      background: rgba(255,255,255,0.07);
-      border-color: rgba(255,255,255,0.2);
-    }
-
-    .ctrl-btn:active:not(:disabled) {
-      transform: scale(0.97);
-    }
-
-    .ctrl-btn:disabled {
-      opacity: 0.35;
-      cursor: default;
-    }
-
-    .ctrl-btn .btn-icon { font-size: 20px; display: block; margin-bottom: 6px; line-height: 1; }
-
-    /* pause/play gets special colour */
-    #btn-pause {
-      border-color: rgba(0,212,255,0.3);
-      color: var(--cyan);
-      grid-column: span 3; /* full width */
-      padding: 20px;
-    }
-
-    #btn-pause:hover {
-      background: rgba(0,212,255,0.08);
-      border-color: rgba(0,212,255,0.6);
-    }
-
-    #btn-pause.paused {
-      border-color: rgba(255,195,0,0.4);
-      color: var(--gold);
-      background: rgba(255,195,0,0.07);
-    }
-
-    #btn-pause.paused:hover {
-      background: rgba(255,195,0,0.12);
-      border-color: rgba(255,195,0,0.7);
-    }
-
-    #btn-pause .btn-label {
-      font-size: 14px;
-      letter-spacing: 4px;
-    }
-
-    /* ── RELOAD BTN ── */
-    .reload-btn {
-      width: 100%;
-      padding: 16px;
-      border-radius: 10px;
-      border: 1px solid rgba(180,0,255,0.3);
-      background: rgba(180,0,255,0.05);
-      color: rgba(200,100,255,0.9);
-      cursor: pointer;
-      font-family: 'Orbitron', monospace;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      transition: all 0.2s ease;
-    }
-
-    .reload-btn:hover:not(:disabled) {
-      background: rgba(180,0,255,0.12);
-      border-color: rgba(180,0,255,0.6);
-    }
-
-    .reload-btn:disabled { opacity: 0.4; cursor: default; }
-
-    .reload-hint {
-      font-size: 12px;
-      color: var(--dim);
-      letter-spacing: 1px;
-      margin-top: 10px;
-      text-align: center;
-    }
-
-    /* ── KEYBOARD SHORTCUTS ── */
-    .shortcuts {
-      padding: 20px 28px 24px;
-    }
-
-    .shortcuts-title {
-      font-family: 'Orbitron', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--dim);
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-    }
-
-    .shortcuts-grid {
-      display: grid;
-      grid-template-columns: repeat(2, auto 1fr);
-      gap: 8px 20px;
-      align-items: center;
-    }
-
-    kbd {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 32px;
-      height: 24px;
-      padding: 0 8px;
-      border-radius: 5px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.14);
-      font-family: 'Orbitron', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: 1px;
-      justify-self: start;
-    }
-
-    .key-label {
-      font-size: 13px;
-      color: var(--dim);
-      letter-spacing: 1px;
-    }
-
-    /* ── FEEDBACK TOAST ── */
-    #toast {
-      position: fixed;
-      bottom: 24px; left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: rgba(0,212,255,0.15);
-      border: 1px solid rgba(0,212,255,0.35);
-      color: var(--cyan);
-      font-family: 'Orbitron', monospace;
-      font-size: 11px;
-      letter-spacing: 3px;
-      padding: 10px 22px;
-      border-radius: 30px;
-      opacity: 0;
-      transition: opacity 0.25s ease, transform 0.25s ease;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-
-    #toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
+    .screen-btn, .class-btn { padding: 16px 12px; }
+    .screen-btn.active { border-color: rgba(0,212,255,0.6); color: var(--cyan); background: rgba(0,212,255,0.08); }
+    .class-btn.active { border-color: rgba(0,255,136,0.6); color: var(--green); background: rgba(0,255,136,0.08); }
+    .class-btn-name { font-size: 14px; display: block; }
+    .class-btn-detail { font-size: 11px; opacity: 0.6; display: block; margin-top: 4px; }
+    .btn-icon { font-size: 18px; margin-right: 8px; }
+    .play-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .ctrl-btn { padding: 14px 10px; font-size: 11px; letter-spacing: 2px; }
+    #btn-pause { border-color: rgba(0,212,255,0.4); color: var(--cyan); grid-column: span 3; padding: 18px; margin-bottom: 10px; }
+    #btn-pause.paused { border-color: rgba(255,195,0,0.6); color: #ffd700; background: rgba(255,195,0,0.08); }
+    .reload-btn { width: 100%; padding: 16px; border-color: rgba(180,0,255,0.3); background: rgba(180,0,255,0.05); color: rgba(200,100,255,0.9); font-size: 11px; letter-spacing: 3px; }
+    .reload-hint { font-size: 12px; color: var(--dim); margin-top: 10px; text-align: center; }
+    .shortcuts { padding: 20px 28px 24px; }
+    .shortcuts-title { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; }
+    .shortcuts-grid { display: grid; grid-template-columns: repeat(2, auto 1fr); gap: 8px 20px; align-items: center; }
+    kbd { min-width: 32px; height: 24px; padding: 0 8px; border-radius: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); font-family: 'Orbitron', monospace; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .key-label { font-size: 13px; color: var(--dim); }
   </style>
 </head>
 <body>
   <div class="panel">
-
-    <!-- HEADER -->
     <div class="panel-header">
       <div>
         <div class="panel-title">Overlay Controls</div>
         <div class="panel-sub">Apex &amp; Chill Racing League</div>
       </div>
-      <div class="conn-wrap" id="conn">
-        <div class="conn-dot"></div>
-        <span class="conn-label">Connecting…</span>
-      </div>
+      <div class="conn-wrap" id="conn"><div class="conn-dot"></div><span class="conn-label">Connecting…</span></div>
     </div>
 
-    <!-- CLASS SWITCHER -->
     <div class="section">
-      <div class="section-label">Displaying Class</div>
-      <div class="class-grid" id="class-grid">
-        <!-- populated dynamically -->
+      <div class="section-label">Active Screen</div>
+      <div class="screen-grid">
+        <button class="screen-btn active" id="btn-standings" onclick="setScreen('standings')"><span class="btn-icon">📊</span>Standings</button>
+        <button class="screen-btn" id="btn-races" onclick="setScreen('races')"><span class="btn-icon">🏆</span>Race Results</button>
       </div>
     </div>
 
-    <!-- PLAYBACK -->
+    <div class="section" id="section-class">
+      <div class="section-label">Displaying Class</div>
+      <div class="class-grid" id="class-grid"></div>
+    </div>
+
     <div class="section">
       <div class="section-label">Scroll Control</div>
-      <div style="margin-bottom:10px">
-        <button class="ctrl-btn" id="btn-pause" onclick="togglePause()">
-          <span class="btn-icon" id="pause-icon">⏸</span>
-          <span class="btn-label" id="pause-label">PAUSE SCROLL</span>
-        </button>
-      </div>
+      <button class="ctrl-btn" id="btn-pause" onclick="togglePause()">Pause Scroll</button>
       <div class="play-grid">
-        <button class="ctrl-btn" onclick="resetTop()">
-          <span class="btn-icon">⏫</span>Reset Top
-        </button>
-        <button class="ctrl-btn" onclick="nextClass()">
-          <span class="btn-icon">⏭</span>Next Class
-        </button>
-        <button class="ctrl-btn" onclick="prevClass()">
-          <span class="btn-icon">⏮</span>Prev Class
-        </button>
+        <button class="ctrl-btn" onclick="resetTop()">Reset Top</button>
+        <button class="ctrl-btn" onclick="nextClass()">Next Class</button>
+        <button class="ctrl-btn" onclick="prevClass()">Prev Class</button>
       </div>
     </div>
 
-    <!-- DATA -->
     <div class="section">
       <div class="section-label">Standings Data</div>
-      <button class="reload-btn" id="btn-reload" onclick="reloadData()">
-        ↻ &nbsp; Reload standings.json
-      </button>
-      <div class="reload-hint">Edit data/standings.json then click above to update the overlay</div>
+      <button class="reload-btn" onclick="reloadData()">Reload standings.json</button>
+      <div class="reload-hint">Edit data/standings.json then click above to update overlay</div>
     </div>
 
-    <!-- KEYBOARD SHORTCUTS -->
     <div class="shortcuts">
       <div class="shortcuts-title">Keyboard Shortcuts</div>
       <div class="shortcuts-grid">
-        <kbd>Space</kbd> <span class="key-label">Pause / Resume scroll</span>
-        <kbd>T</kbd>     <span class="key-label">Reset to top</span>
-        <kbd>N</kbd>     <span class="key-label">Next class</span>
-        <kbd>P</kbd>     <span class="key-label">Previous class</span>
-        <kbd>R</kbd>     <span class="key-label">Reload data file</span>
-        <kbd>1–9</kbd>   <span class="key-label">Switch to class by number</span>
+        <kbd>Space</kbd><span class="key-label">Pause / Resume scroll</span>
+        <kbd>T</kbd><span class="key-label">Reset to top</span>
+        <kbd>N</kbd><span class="key-label">Next class</span>
+        <kbd>P</kbd><span class="key-label">Previous class</span>
+        <kbd>S</kbd><span class="key-label">Standings screen</span>
+        <kbd>W</kbd><span class="key-label">Race results screen</span>
       </div>
     </div>
-
   </div>
 
-  <div id="toast"></div>
-
   <script>
-  // ── STATE ───────────────────────────────────────────────────────────────────
-  let state       = { classIdx: 0, paused: false, scrollPos: 0 };
-  let standingsMeta = []; // [{label, tag, count}] for building class buttons
-  let evtSource   = null;
+    let state = { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+    let standingsMeta = [];
+    let evtSource = null;
 
-  // ── SSE ─────────────────────────────────────────────────────────────────────
-  function connectSSE() {
-    if (evtSource) { evtSource.close(); evtSource = null; }
-    evtSource = new EventSource('/api/events');
+    function connectSSE() {
+      if (evtSource) evtSource.close();
+      evtSource = new EventSource('/api/events');
+      evtSource.onopen = () => setConn(true);
+      evtSource.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'state' || msg.type === 'stateUpdate') {
+          state = { classIdx: msg.classIdx ?? 0, paused: !!msg.paused, scrollPos: msg.scrollPos ?? 0, screen: msg.screen ?? 'standings' };
+          renderUI();
+        }
+      };
+      evtSource.onerror = () => { setConn(false); setTimeout(connectSSE, 4000); };
+    }
 
-    evtSource.onopen = () => setConn(true);
+    function setConn(online) {
+      const el = document.getElementById('conn');
+      el.className = `conn-wrap ${online ? 'online' : ''}`;
+      el.querySelector('.conn-label').textContent = online ? 'Connected' : 'Offline';
+    }
 
-    evtSource.onmessage = e => {
-      const msg = JSON.parse(e.data);
-      // state / stateUpdate events keep us in sync with the overlay
-      if (msg.type === 'state' || msg.type === 'stateUpdate') {
-        state = { classIdx: msg.classIdx, paused: msg.paused, scrollPos: msg.scrollPos };
-        renderUI();
-      }
-    };
-
-    evtSource.onerror = () => {
-      setConn(false);
-      setTimeout(connectSSE, 4000);
-    };
-  }
-
-  function setConn(online) {
-    const el = document.getElementById('conn');
-    el.className = `conn-wrap ${online ? 'online' : 'offline'}`;
-    el.querySelector('.conn-label').textContent = online ? 'Connected' : 'Offline';
-  }
-
-  // ── SEND COMMAND ─────────────────────────────────────────────────────────────
-  async function cmd(command, args = {}) {
-    try {
+    async function cmd(command, args = {}) {
       const res = await fetch('/api/command', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ cmd: command, ...args })
+        body: JSON.stringify({ cmd: command, ...args })
       });
       const data = await res.json();
       if (data.state) {
         state = data.state;
         renderUI();
       }
-    } catch (e) {
-      toast('Server unreachable');
-    }
-  }
-
-  // ── ACTIONS ──────────────────────────────────────────────────────────────────
-  function togglePause() {
-    if (state.paused) {
-      state.paused = false;
-      cmd('resume');
-      toast('Resumed');
-    } else {
-      state.paused = true;
-      cmd('pause');
-      toast('Paused');
-    }
-    renderUI();
-  }
-
-  function switchToClass(idx) {
-    state.classIdx = idx;
-    cmd('switchClass', { idx });
-    renderUI();
-    toast(`Switched to ${standingsMeta[idx]?.label || `Class ${idx+1}`}`);
-  }
-
-  function nextClass() {
-    const next = (state.classIdx + 1) % Math.max(1, standingsMeta.length);
-    switchToClass(next);
-  }
-
-  function prevClass() {
-    const n   = Math.max(1, standingsMeta.length);
-    const prev = (state.classIdx - 1 + n) % n;
-    switchToClass(prev);
-  }
-
-  function resetTop() {
-    cmd('resetTop');
-    state.scrollPos = 0;
-    toast('Reset to top');
-  }
-
-  async function reloadData() {
-    const btn = document.getElementById('btn-reload');
-    btn.disabled = true;
-    btn.textContent = '↻  Reloading…';
-    await cmd('reload');
-    await loadMeta(); // refresh our local class list too
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.textContent = '↻  Reload standings.json';
-    }, 1500);
-    toast('Data reloaded');
-  }
-
-  // ── RENDER UI ────────────────────────────────────────────────────────────────
-  function renderUI() {
-    // Pause button
-    const pauseBtn  = document.getElementById('btn-pause');
-    const pauseIcon = document.getElementById('pause-icon');
-    const pauseLbl  = document.getElementById('pause-label');
-    if (state.paused) {
-      pauseBtn.classList.add('paused');
-      pauseIcon.textContent = '▶';
-      pauseLbl.textContent  = 'RESUME SCROLL';
-    } else {
-      pauseBtn.classList.remove('paused');
-      pauseIcon.textContent = '⏸';
-      pauseLbl.textContent  = 'PAUSE SCROLL';
     }
 
-    // Class buttons
-    document.querySelectorAll('.class-btn').forEach(btn => {
-      const idx = parseInt(btn.dataset.idx);
-      btn.classList.toggle('active', idx === state.classIdx);
-    });
-  }
+    function setScreen(next) {
+      state.screen = next;
+      cmd('setScreen', { screen: next });
+      renderUI();
+    }
 
-  // ── LOAD META (class names/counts from the data file) ────────────────────────
-  async function loadMeta() {
-    try {
-      const res  = await fetch('/data/standings.json');
-      const data = await res.json();
-      standingsMeta = data.map(cls => {
-        const n = (cls.carClass || '').toLowerCase();
-        return {
-          label: n.includes('hypercar') ? 'HYPERCAR' : 'LMGT3',
-          tag:   n.includes('hypercar') ? 'hypercar' : 'gt3',
-          count: cls.standings?.length || 0
-        };
+    function togglePause() {
+      state.paused = !state.paused;
+      cmd(state.paused ? 'pause' : 'resume');
+      renderUI();
+    }
+
+    function switchToClass(idx) {
+      state.classIdx = idx;
+      cmd('switchClass', { idx });
+      renderUI();
+    }
+    function nextClass() { switchToClass((state.classIdx + 1) % Math.max(1, standingsMeta.length)); }
+    function prevClass() {
+      const n = Math.max(1, standingsMeta.length);
+      switchToClass((state.classIdx - 1 + n) % n);
+    }
+    function resetTop() { cmd('resetTop'); }
+    function reloadData() { cmd('reload'); loadMeta(); }
+
+    function renderUI() {
+      document.getElementById('btn-pause').classList.toggle('paused', state.paused);
+      document.getElementById('btn-pause').textContent = state.paused ? 'Resume Scroll' : 'Pause Scroll';
+      document.getElementById('btn-standings').classList.toggle('active', state.screen === 'standings');
+      document.getElementById('btn-races').classList.toggle('active', state.screen === 'races');
+      document.getElementById('section-class').style.display = state.screen === 'standings' ? '' : 'none';
+      document.querySelectorAll('.class-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.idx, 10) === state.classIdx);
       });
+    }
+
+    async function loadMeta() {
+      const res = await fetch('/data/standings.json');
+      const raw = await res.json();
+      const classes = raw.classes ?? raw;
+      standingsMeta = classes.map(cls => ({
+        label: 'LMGT3',
+        count: cls.standings?.length || 0
+      }));
       buildClassButtons();
-    } catch (e) {
-      console.warn('Could not load standings meta', e);
     }
-  }
 
-  function buildClassButtons() {
-    const grid = document.getElementById('class-grid');
-    grid.innerHTML = standingsMeta.map((m, i) => `
-      <button class="class-btn ${m.tag}${i === state.classIdx ? ' active' : ''}"
-              data-idx="${i}" onclick="switchToClass(${i})">
-        <span class="class-btn-name">${m.label}</span>
-        <span class="class-btn-detail">${m.count} Drivers</span>
-      </button>`
-    ).join('');
-  }
-
-  // ── INITIAL STATE ─────────────────────────────────────────────────────────────
-  async function init() {
-    try {
-      const res = await fetch('/api/state');
-      state = await res.json();
-      setConn(true);
-    } catch (_) { setConn(false); }
-    await loadMeta();
-    renderUI();
-    connectSSE();
-  }
-
-  // ── TOAST ────────────────────────────────────────────────────────────────────
-  let toastTimer = null;
-  function toast(msg) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
-  }
-
-  // ── KEYBOARD ─────────────────────────────────────────────────────────────────
-  document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    switch (e.code) {
-      case 'Space':  e.preventDefault(); togglePause(); break;
-      case 'KeyT':   resetTop();   break;
-      case 'KeyN':   nextClass();  break;
-      case 'KeyP':   prevClass();  break;
-      case 'KeyR':   reloadData(); break;
-      default:
-        // Digit 1–9 → switch to that class index
-        if (e.code.startsWith('Digit')) {
-          const n = parseInt(e.key) - 1;
-          if (n >= 0 && n < standingsMeta.length) switchToClass(n);
-        }
+    function buildClassButtons() {
+      const grid = document.getElementById('class-grid');
+      grid.innerHTML = standingsMeta.map((m, i) => `
+        <button class="class-btn${i === state.classIdx ? ' active' : ''}" data-idx="${i}" onclick="switchToClass(${i})">
+          <span class="class-btn-name">${m.label}</span>
+          <span class="class-btn-detail">${m.count} Drivers</span>
+        </button>
+      `).join('');
     }
-  });
 
-  // ── START ────────────────────────────────────────────────────────────────────
-  init();
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      switch (e.code) {
+        case 'Space': e.preventDefault(); togglePause(); break;
+        case 'KeyT': resetTop(); break;
+        case 'KeyN': nextClass(); break;
+        case 'KeyP': prevClass(); break;
+        case 'KeyS': setScreen('standings'); break;
+        case 'KeyW': setScreen('races'); break;
+      }
+    });
+
+    async function init() {
+      try {
+        const res = await fetch('/api/state');
+        state = await res.json();
+        setConn(true);
+      } catch (_) { setConn(false); }
+      await loadMeta();
+      renderUI();
+      connectSSE();
+    }
+    init();
   </script>
 </body>
 </html>

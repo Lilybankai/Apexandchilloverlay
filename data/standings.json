@@ -1,5 +1,12 @@
-[
-  {
+{
+  "meta": {
+    "nextRace": {
+      "name": "Round 4",
+      "date": "2026-05-10T19:00:00Z"
+    }
+  },
+  "classes": [
+    {
     "carClass": "LMGT3 - Season 1 Gt3",
     "standings": [
       {"position":1,  "id":"Andy Winters",        "carNum":7,   "car":"Aston Martin Vantage AMR LMGT3", "championshipPoints":53.0, "championshipPenalties":0, "championshipScore":53.0, "actualPoints":53.0, "races":[{"position":4, "pointsTotal":19.0,"dnf":false,"dns":false},{"position":6, "pointsTotal":15.0,"dnf":false,"dns":false},{"position":4, "pointsTotal":19.0,"dnf":false,"dns":false}]},
@@ -36,21 +43,6 @@
       {"position":32, "id":"Roman romissimo",     "carNum":720, "car":"BMW M4 GT3",                    "championshipPoints":0.0,  "championshipPenalties":0, "championshipScore":0.0,  "actualPoints":0.0,  "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null}]},
       {"position":33, "id":"samuel allen",        "carNum":999, "car":"McLaren 720S LMGT3 Evo",        "championshipPoints":0.0,  "championshipPenalties":0, "championshipScore":0.0,  "actualPoints":0.0,  "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null}]}
     ]
-  },
-  {
-    "carClass": "Hypercar Hyper Car",
-    "standings": [
-      {"position":1,  "id":"Kallum Kerrigan",        "carNum":28,  "car":"Genesis GMR001",    "championshipPoints":40.0, "championshipPenalties":0, "championshipScore":40.0, "actualPoints":40.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":2,"pointsTotal":23.0,"dnf":false,"dns":false},{"position":5,"pointsTotal":17.0,"dnf":false,"dns":false}]},
-      {"position":2,  "id":"Jonathan Otto",           "carNum":22,  "car":"Peugeot 9X8 2024", "championshipPoints":25.0, "championshipPenalties":0, "championshipScore":26.0, "actualPoints":26.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":1,"pointsTotal":26.0,"dnf":false,"dns":false},{"position":null,"pointsTotal":null,"dnf":null,"dns":null}]},
-      {"position":3,  "id":"Jack Mayes",              "carNum":23,  "car":"Peugeot 9X8 2024", "championshipPoints":25.0, "championshipPenalties":0, "championshipScore":26.0, "actualPoints":26.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":1,"pointsTotal":26.0,"dnf":false,"dns":false}]},
-      {"position":4,  "id":"Devan Urban",             "carNum":429, "car":"Peugeot 9X8 2024", "championshipPoints":23.0, "championshipPenalties":0, "championshipScore":23.0, "actualPoints":23.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":2,"pointsTotal":23.0,"dnf":false,"dns":false}]},
-      {"position":5,  "id":"Antonis Paparinopoulos",  "carNum":12,  "car":"Ferrari 499P",     "championshipPoints":21.0, "championshipPenalties":0, "championshipScore":21.0, "actualPoints":21.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":3,"pointsTotal":21.0,"dnf":false,"dns":false},{"position":null,"pointsTotal":null,"dnf":null,"dns":null}]},
-      {"position":6,  "id":"Tudor Debu",              "carNum":17,  "car":"Peugeot 9X8 2024", "championshipPoints":21.0, "championshipPenalties":0, "championshipScore":21.0, "actualPoints":21.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":3,"pointsTotal":21.0,"dnf":false,"dns":false}]},
-      {"position":7,  "id":"Ben Nytes",               "carNum":66,  "car":"Peugeot 9X8",      "championshipPoints":19.0, "championshipPenalties":0, "championshipScore":19.0, "actualPoints":19.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":4,"pointsTotal":19.0,"dnf":false,"dns":false},{"position":7,"pointsTotal":0.0,"dnf":false,"dns":true}]},
-      {"position":8,  "id":"Dalton Stevens",          "carNum":321, "car":"Peugeot 9X8 2024", "championshipPoints":19.0, "championshipPenalties":0, "championshipScore":19.0, "actualPoints":19.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":4,"pointsTotal":19.0,"dnf":false,"dns":false}]},
-      {"position":9,  "id":"Alex O' Reilly",          "carNum":13,  "car":"Porsche 963",      "championshipPoints":17.0, "championshipPenalties":0, "championshipScore":17.0, "actualPoints":17.0, "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":5,"pointsTotal":17.0,"dnf":false,"dns":false},{"position":8,"pointsTotal":0.0,"dnf":false,"dns":true}]},
-      {"position":10, "id":"Fabian Egger",            "carNum":63,  "car":"Ferrari 499P",     "championshipPoints":0.0,  "championshipPenalties":0, "championshipScore":0.0,  "actualPoints":0.0,  "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":6,"pointsTotal":0.0,"dnf":false,"dns":true},{"position":6,"pointsTotal":0.0,"dnf":false,"dns":true}]},
-      {"position":11, "id":"Szanto Mate",             "carNum":15,  "car":"Porsche 963",      "championshipPoints":0.0,  "championshipPenalties":0, "championshipScore":0.0,  "actualPoints":0.0,  "races":[{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null},{"position":null,"pointsTotal":null,"dnf":null,"dns":null}]}
-    ]
   }
-]
+  ]
+}
