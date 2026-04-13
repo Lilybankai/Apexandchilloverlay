@@ -27,7 +27,9 @@ async function simgridFetch(pathname) {
     headers: { Authorization: `Bearer ${SIMGRID_KEY}` }
   });
   if (!response.ok) {
-    throw new Error(`SimGrid request failed (${response.status})`);
+    const text = await response.text();
+    const snippet = (text || '').slice(0, 220);
+    throw new Error(`SimGrid request failed (${response.status}) ${snippet}`);
   }
   const data = await response.json();
   simgridCache[url] = { ts: Date.now(), data };
@@ -97,7 +99,7 @@ app.get('/api/simgrid/league', async (_req, res) => {
   try {
     res.json(await simgridFetch(`/api/leagues/${LEAGUE_ID}`));
   } catch (error) {
-    res.json({ error: true });
+    res.status(502).json({ error: true, message: String(error?.message || error) });
   }
 });
 
@@ -105,7 +107,7 @@ app.get('/api/simgrid/schedule', async (_req, res) => {
   try {
     res.json(await simgridFetch(`/api/leagues/${LEAGUE_ID}/events`));
   } catch (error) {
-    res.json({ error: true });
+    res.status(502).json({ error: true, message: String(error?.message || error) });
   }
 });
 
@@ -113,7 +115,7 @@ app.get('/api/simgrid/results/:eventId', async (req, res) => {
   try {
     res.json(await simgridFetch(`/api/events/${req.params.eventId}/results`));
   } catch (error) {
-    res.json({ error: true });
+    res.status(502).json({ error: true, message: String(error?.message || error) });
   }
 });
 
