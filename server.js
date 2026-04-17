@@ -290,10 +290,11 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/state', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { classIdx, paused, scrollPos, screen, league } = body;
+    const { classIdx, scrollPos, screen, league } = body;
     if (league === 'lmu' || league === 'gt7') serverState.league = league;
     if (classIdx  != null) serverState.classIdx  = classIdx;
-    if (paused    != null) serverState.paused    = paused;
+    // Pause/resume is command-authoritative only (/api/command). Overlay scroll ticks POST
+    // often; accepting paused here races with pause commands and can undo pause.
     if (scrollPos != null) serverState.scrollPos = scrollPos;
     if (screen    != null) serverState.screen    = screen;
     serverState.leagueState[serverState.league] = {

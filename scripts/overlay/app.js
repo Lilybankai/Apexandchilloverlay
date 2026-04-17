@@ -217,11 +217,9 @@
     }
 
     if (message.type === 'stateUpdate') {
-      app.state.league = message.league === 'gt7' ? 'gt7' : 'lmu';
-      app.state.classIdx = message.classIdx ?? 0;
-      app.state.isPaused = message.paused ?? false;
-      app.state.screen = message.screen ?? 'standings';
-      doSetScreen(app.state.screen, true);
+      // Ignore on the overlay. This event fires after every POST /api/state (scroll sync) and
+      // previously called doSetScreen → continueScroll, which cleared the scroll timer and
+      // broke auto-scroll / pause. Controls page still consumes stateUpdate for its own UI.
       return;
     }
 

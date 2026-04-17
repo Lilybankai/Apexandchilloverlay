@@ -83,7 +83,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             classIdx: this.state.classIdx,
-            paused: this.state.isPaused,
             scrollPos: this.state.scrollPos,
             screen: this.state.screen,
             league: this.state.league
