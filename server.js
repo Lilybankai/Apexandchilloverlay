@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs/promises');
 const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
@@ -6,6 +7,9 @@ const SIMGRID_BASE = 'https://www.thesimgrid.com';
 const SIMGRID_KEY = 'PhEDyzEVPztV4yMJYsmQjKWy';
 const COMMUNITY_ID = 3846;
 const CHAMPIONSHIP_ID = 23082;
+const SLP_BASE = 'https://simleaguepro.com/api/v1';
+const SLP_COMMUNITY_ID = 'eb1236b1-e469-4fe7-8f1a-a7d8a30d6c65';
+const SLP_LEAGUE_ID = 'f2d6eae4-9591-4e29-bc77-ec2e0197c32e';
 
 // Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
 app.set('trust proxy', 1);
@@ -15,8 +19,19 @@ app.use(express.static(__dirname)); // serves overlay.html, controls.html, data/
 
 // ── SSE client list & server-side state ──────────────────────────────────────
 let clients     = [];
-let serverState = { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+let serverState = {
+  league: 'lmu',
+  classIdx: 0,
+  paused: false,
+  scrollPos: 0,
+  screen: 'standings',
+  leagueState: {
+    lmu: { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' },
+    gt7: { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' }
+  }
+};
 const simgridCache = {};
+const slpCache = {};
 
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
@@ -50,6 +65,200 @@ async function simgridFetchFirst(paths) {
   throw new Error(`All SimGrid paths failed. Tried: ${tried}. Last error: ${String(lastError?.message || lastError)}`);
 }
 
+async function slpFetch(pathname, { bypassCache = false } = {}) {
+  const url = `${SLP_BASE}${pathname}`;
+  if (!bypassCache) {
+    const cached = slpCache[url];
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+      return cached.data;
+    }
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`SimLeaguePro request failed (${response.status}) ${(text || '').slice(0, 220)}`);
+  }
+  const data = await response.json();
+  slpCache[url] = { ts: Date.now(), data };
+  return data;
+}
+
+function clearSlpCache() {
+  Object.keys(slpCache).forEach(key => delete slpCache[key]);
+}
+
+async function slpFetchAllDrivers(communityId) {
+  const perPage = 50;
+  const first = await slpFetch(`/communities/${communityId}/drivers.json?page=1&per_page=${perPage}`);
+  const all = Array.isArray(first?.drivers) ? [...first.drivers] : [];
+  const totalPages = Number(first?.total_pages || 1);
+  for (let page = 2; page <= totalPages; page += 1) {
+    try {
+      const next = await slpFetch(`/communities/${communityId}/drivers.json?page=${page}&per_page=${perPage}`);
+      if (Array.isArray(next?.drivers)) all.push(...next.drivers);
+    } catch (_) {
+      break;
+    }
+  }
+  return all;
+}
+
+function toTimestamp(value) {
+  if (!value) return null;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function normalizeKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function aggregateDriverRoundResult(username, round) {
+  const target = normalizeKey(username);
+  const buckets = [
+    ...(round.raceResults || []),
+    ...(round.subRaces || []).flatMap(sub => sub.race_results || [])
+  ];
+
+  let hasData = false;
+  let totalPoints = 0;
+  let bestPosition = null;
+  let dnf = false;
+  let dns = false;
+
+  buckets.forEach(entry => {
+    if (normalizeKey(entry.username) !== target) return;
+    hasData = true;
+    totalPoints += Number(entry.points || 0);
+    const pos = entry.position;
+    if (pos != null && (bestPosition == null || pos < bestPosition)) bestPosition = pos;
+    if (entry.dnf) dnf = true;
+    if (entry.dns) dns = true;
+  });
+
+  if (!hasData) return { position: null, pointsTotal: null, dnf: null, dns: null };
+  return { position: bestPosition, pointsTotal: totalPoints, dnf, dns };
+}
+
+function buildGt7Rounds(races) {
+  const now = Date.now();
+  const pastBufferMs = 3 * 60 * 60 * 1000;
+  const rounds = races.map((race, idx) => {
+    const date = race.start_datetime || null;
+    const ts = toTimestamp(date);
+    const mainResults = Array.isArray(race.race_results) ? race.race_results : [];
+    const subRaces = Array.isArray(race.sub_races) ? race.sub_races : [];
+    const hasResults = mainResults.length > 0 || subRaces.some(sub => (sub.race_results || []).length > 0);
+    const isFinished = hasResults || (!!ts && ts < now - pastBufferMs);
+    const displayName = (race.name && race.name.trim()) || race.track || `Round ${idx + 1}`;
+    return {
+      index: idx,
+      eventId: race.id || null,
+      name: displayName,
+      track: race.track || null,
+      date,
+      isFinished,
+      raceResults: mainResults,
+      subRaces
+    };
+  });
+  const nextRound = rounds.find(round => !round.isFinished);
+  if (nextRound) nextRound.isNext = true;
+  return rounds;
+}
+
+function buildGt7Class(className, entries, rounds, driverLookup) {
+  const ranked = entries.map((entry, idx) => {
+    const enriched = driverLookup.get(normalizeKey(entry.username)) || {};
+    const displayName = String(
+      entry.platform_username
+      || entry.username
+      || enriched.community_username
+      || `Driver ${idx + 1}`
+    ).trim();
+    const car = [entry.constructor, entry.car].filter(Boolean).join(' ').trim() || entry.car || 'GT7';
+    const points = Number(entry.points || 0);
+    return {
+      position: Number(entry.position) || null,
+      id: displayName,
+      carNum: entry.car_number || '--',
+      car,
+      championshipPoints: points,
+      races: rounds.map(round => aggregateDriverRoundResult(entry.username, round))
+    };
+  });
+
+  ranked.sort((a, b) => {
+    if (b.championshipPoints !== a.championshipPoints) return b.championshipPoints - a.championshipPoints;
+    if (a.position == null && b.position == null) return 0;
+    if (a.position == null) return 1;
+    if (b.position == null) return -1;
+    return a.position - b.position;
+  });
+  ranked.forEach((driver, idx) => { driver.position = idx + 1; });
+
+  return { carClass: className, label: className, standings: ranked };
+}
+
+function normalizeGt7Data(driversList, leaguePayload) {
+  const league = leaguePayload || {};
+  const leagueResults = Array.isArray(league.league_results) ? league.league_results : [];
+  const races = Array.isArray(league.races) ? league.races : [];
+
+  const driverLookup = new Map();
+  (Array.isArray(driversList) ? driversList : []).forEach(entry => {
+    const key = normalizeKey(entry.username);
+    if (key) driverLookup.set(key, entry);
+  });
+
+  const rounds = buildGt7Rounds(races);
+
+  const byClass = new Map();
+  leagueResults
+    .filter(entry => !entry.reserve)
+    .forEach(entry => {
+      const cls = entry.vehicle_class || 'Overall';
+      if (!byClass.has(cls)) byClass.set(cls, []);
+      byClass.get(cls).push(entry);
+    });
+
+  const vehicleClasses = Array.isArray(league.vehicle_classes) && league.vehicle_classes.length
+    ? league.vehicle_classes
+    : Array.from(byClass.keys());
+
+  const classes = vehicleClasses
+    .filter(cls => byClass.has(cls))
+    .map(cls => buildGt7Class(cls, byClass.get(cls), rounds, driverLookup));
+
+  if (classes.length === 0 && leagueResults.length) {
+    classes.push(buildGt7Class('Overall', leagueResults, rounds, driverLookup));
+  }
+
+  const nextRound = rounds.find(round => round.isNext);
+  const seasonName = league.season != null && league.name
+    ? `${league.name} · Tier ${league.tier ?? '-'}`
+    : (league.name || 'GT7 League');
+
+  return {
+    classes,
+    meta: {
+      seasonName,
+      platform: league.platform || null,
+      game: league.game || null,
+      rounds: rounds.map(round => ({
+        index: round.index,
+        eventId: round.eventId,
+        name: round.name,
+        track: round.track,
+        date: round.date,
+        isFinished: round.isFinished,
+        isNext: !!round.isNext
+      })),
+      nextRace: nextRound ? { name: nextRound.name, date: nextRound.date } : null
+    }
+  };
+}
+
 // ── SSE endpoint  (overlay + controls both connect here) ─────────────────────
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type',       'text/event-stream');
@@ -81,11 +290,18 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/state', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { classIdx, paused, scrollPos, screen } = body;
+    const { classIdx, paused, scrollPos, screen, league } = body;
+    if (league === 'lmu' || league === 'gt7') serverState.league = league;
     if (classIdx  != null) serverState.classIdx  = classIdx;
     if (paused    != null) serverState.paused    = paused;
     if (scrollPos != null) serverState.scrollPos = scrollPos;
     if (screen    != null) serverState.screen    = screen;
+    serverState.leagueState[serverState.league] = {
+      classIdx: serverState.classIdx,
+      paused: serverState.paused,
+      scrollPos: serverState.scrollPos,
+      screen: serverState.screen
+    };
     broadcast({ type: 'stateUpdate', ...serverState });
     res.json({ ok: true });
   } catch (err) {
@@ -99,13 +315,35 @@ app.post('/api/command', (req, res) => {
   const { cmd, ...args } = req.body;
 
   // keep server state in sync so new clients get the right picture
+  if (cmd === 'setLeague') {
+    const nextLeague = args.league === 'gt7' ? 'gt7' : 'lmu';
+    serverState.league = nextLeague;
+    const leagueState = serverState.leagueState[nextLeague] || { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+    serverState.classIdx = leagueState.classIdx;
+    serverState.paused = leagueState.paused;
+    serverState.scrollPos = leagueState.scrollPos;
+    serverState.screen = leagueState.screen;
+  }
   if (cmd === 'pause')       serverState.paused    = true;
   if (cmd === 'resume')      serverState.paused    = false;
   if (cmd === 'switchClass') serverState.classIdx  = args.idx;
   if (cmd === 'resetTop')    serverState.scrollPos = 0;
   if (cmd === 'setScreen')   serverState.screen    = args.screen;
+  serverState.leagueState[serverState.league] = {
+    classIdx: serverState.classIdx,
+    paused: serverState.paused,
+    scrollPos: serverState.scrollPos,
+    screen: serverState.screen
+  };
 
-  broadcast({ type: 'command', cmd, ...args });
+  broadcast({
+    type: 'command',
+    cmd,
+    ...args,
+    classIdx: serverState.classIdx,
+    screen: serverState.screen,
+    paused: serverState.paused
+  });
   res.json({ ok: true, state: serverState });
 });
 
@@ -138,6 +376,34 @@ app.get('/api/simgrid/results/:eventId', async (req, res) => {
       `/api/v1/races/${req.params.eventId}`,
       `/api/v1/events/${req.params.eventId}`
     ]));
+  } catch (error) {
+    res.status(502).json({ error: true, message: String(error?.message || error) });
+  }
+});
+
+app.get('/api/lmu/data', async (_req, res) => {
+  try {
+    const standingsPath = path.join(__dirname, 'data', 'standings.json');
+    const standings = JSON.parse(await fs.readFile(standingsPath, 'utf8'));
+    const schedule = await simgridFetchFirst([
+      `/api/v1/races?community_id=${COMMUNITY_ID}`,
+      `/api/v1/rounds?community_id=${COMMUNITY_ID}`,
+      `/api/v1/championships?community_id=${COMMUNITY_ID}`
+    ]);
+    res.json({ standings, meta: { roundsSource: schedule } });
+  } catch (error) {
+    res.status(502).json({ error: true, message: String(error?.message || error) });
+  }
+});
+
+app.get('/api/gt7/data', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') clearSlpCache();
+    const [drivers, league] = await Promise.all([
+      slpFetchAllDrivers(SLP_COMMUNITY_ID),
+      slpFetch(`/leagues/${SLP_LEAGUE_ID}.json?include_results=true`)
+    ]);
+    res.json(normalizeGt7Data(drivers, league));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }

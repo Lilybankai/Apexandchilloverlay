@@ -18,12 +18,15 @@
     .conn-wrap.online .conn-label { color: var(--green); }
     .section { padding: 24px 28px; border-bottom: 1px solid var(--border); }
     .section-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; }
+    .league-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .screen-grid, .class-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .screen-btn, .class-btn, .ctrl-btn, .reload-btn {
       border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text);
       cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; font-family: 'Orbitron', monospace;
     }
     .screen-btn, .class-btn { padding: 16px 12px; }
+    .league-btn { padding: 16px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text); cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; font-family: 'Orbitron', monospace; }
+    .league-btn.active { border-color: rgba(255,195,0,0.6); color: #ffd700; background: rgba(255,195,0,0.08); }
     .screen-btn.active { border-color: rgba(0,212,255,0.6); color: var(--cyan); background: rgba(0,212,255,0.08); }
     .class-btn.active { border-color: rgba(0,255,136,0.6); color: var(--green); background: rgba(0,255,136,0.08); }
     .class-btn-name { font-size: 14px; display: block; }
@@ -50,6 +53,14 @@
         <div class="panel-sub">Apex &amp; Chill Racing League</div>
       </div>
       <div class="conn-wrap" id="conn"><div class="conn-dot"></div><span class="conn-label">Connecting…</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">League</div>
+      <div class="league-grid">
+        <button class="league-btn active" id="btn-league-lmu" onclick="setLeague('lmu')">LMU</button>
+        <button class="league-btn" id="btn-league-gt7" onclick="setLeague('gt7')">GT7</button>
+      </div>
     </div>
 
     <div class="section">
@@ -97,7 +108,7 @@
   </div>
 
   <script>
-    let state = { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+    let state = { league: 'lmu', classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
     let standingsMeta = [];
     let evtSource = null;
 
@@ -108,7 +119,13 @@
       evtSource.onmessage = e => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'state' || msg.type === 'stateUpdate') {
-          state = { classIdx: msg.classIdx ?? 0, paused: !!msg.paused, scrollPos: msg.scrollPos ?? 0, screen: msg.screen ?? 'standings' };
+          state = {
+            league: msg.league === 'gt7' ? 'gt7' : 'lmu',
+            classIdx: msg.classIdx ?? 0,
+            paused: !!msg.paused,
+            scrollPos: msg.scrollPos ?? 0,
+            screen: msg.screen ?? 'standings'
+          };
           renderUI();
         }
       };
@@ -129,7 +146,10 @@
       });
       const data = await res.json();
       if (data.state) {
-        state = data.state;
+        state = {
+          ...data.state,
+          league: data.state.league === 'gt7' ? 'gt7' : 'lmu'
+        };
         renderUI();
       }
     }
@@ -138,6 +158,16 @@
       state.screen = next;
       cmd('setScreen', { screen: next });
       renderUI();
+    }
+
+    function setLeague(next) {
+      const league = next === 'gt7' ? 'gt7' : 'lmu';
+      state.league = league;
+      state.classIdx = 0;
+      state.screen = 'standings';
+      cmd('setLeague', { league });
+      renderUI();
+      loadMeta();
     }
 
     function togglePause() {
@@ -157,7 +187,7 @@
       switchToClass((state.classIdx - 1 + n) % n);
     }
     function resetTop() { cmd('resetTop'); }
-    function reloadData() { cmd('reload'); loadMeta(); }
+    function reloadData() { cmd('reload'); loadMeta(true); }
 
     function renderUI() {
       document.getElementById('btn-pause').classList.toggle('paused', state.paused);
@@ -165,18 +195,23 @@
       document.getElementById('btn-standings').classList.toggle('active', state.screen === 'standings');
       document.getElementById('btn-races').classList.toggle('active', state.screen === 'races');
       document.getElementById('btn-schedule').classList.toggle('active', state.screen === 'schedule');
+      document.getElementById('btn-league-lmu').classList.toggle('active', state.league !== 'gt7');
+      document.getElementById('btn-league-gt7').classList.toggle('active', state.league === 'gt7');
       document.getElementById('section-class').style.display = state.screen === 'standings' ? '' : 'none';
       document.querySelectorAll('.class-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.idx, 10) === state.classIdx);
       });
     }
 
-    async function loadMeta() {
-      const res = await fetch('/data/standings.json');
+    async function loadMeta(bust = false) {
+      const url = state.league === 'gt7'
+        ? `/api/gt7/data${bust ? '?refresh=1' : ''}`
+        : '/data/standings.json';
+      const res = await fetch(url);
       const raw = await res.json();
-      const classes = raw.classes ?? raw;
+      const classes = raw.classes ?? raw ?? [];
       standingsMeta = classes.map(cls => ({
-        label: 'LMGT3',
+        label: cls.label || cls.carClass || 'Class',
         count: cls.standings?.length || 0
       }));
       buildClassButtons();

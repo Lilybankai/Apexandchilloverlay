@@ -7,6 +7,7 @@
       switchAnimMs: 380
     },
     state: {
+      league: 'lmu',
       standings: [],
       meta: {},
       classIdx: 0,
@@ -61,9 +62,17 @@
     buildClassTags() {
       const cls = this.state.standings[this.state.classIdx];
       if (!cls) return;
-      this.elements.classTags.innerHTML = '<div class="class-tag">LMGT3</div>';
-      this.elements.hdrSeason.textContent = `Season 1 · ${this.roundCount()} Rounds Complete`;
-      this.elements.footerInfo.textContent = `LMGT3 · ${cls.standings.length} Drivers`;
+      const tags = this.state.standings
+        .map((item, idx) => {
+          const active = idx === this.state.classIdx ? ' style="border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.09)"' : '';
+          const label = (item.label || item.carClass || `Class ${idx + 1}`).replace(/\s+/g, ' ').trim();
+          return `<div class="class-tag"${active}>${label.slice(0, 22)}</div>`;
+        })
+        .join('');
+      this.elements.classTags.innerHTML = tags;
+      const seasonName = this.state.meta.seasonName || (this.state.league === 'gt7' ? 'GT7 League' : 'LMU League');
+      this.elements.hdrSeason.textContent = `${seasonName} · ${this.roundCount()} Rounds`;
+      this.elements.footerInfo.textContent = `${cls.label || cls.carClass || 'Class'} · ${cls.standings.length} Drivers`;
     },
     reportState() {
       if (this.state.skipApiReport) return;
@@ -76,7 +85,8 @@
             classIdx: this.state.classIdx,
             paused: this.state.isPaused,
             scrollPos: this.state.scrollPos,
-            screen: this.state.screen
+            screen: this.state.screen,
+            league: this.state.league
           })
         })
           .then(res => {

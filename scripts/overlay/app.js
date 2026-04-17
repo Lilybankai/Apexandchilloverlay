@@ -2,6 +2,7 @@
   const app = window.OverlayApp;
 
   async function hydrateSchedule() {
+    if (app.state.league !== 'lmu') return;
     try {
       const response = await fetch('/api/simgrid/schedule');
       const data = await response.json();
@@ -54,13 +55,22 @@
     } catch (_) {}
   }
 
-  async function fetchData() {
+  async function fetchData({ bust = false } = {}) {
     try {
-      const response = await fetch('/data/standings.json');
-      const raw = await response.json();
-      app.state.standings = raw.classes ?? raw;
-      app.state.meta = raw.meta ?? {};
-      await hydrateSchedule();
+      if (app.state.league === 'gt7') {
+        const response = await fetch(`/api/gt7/data${bust ? '?refresh=1' : ''}`);
+        const raw = await response.json();
+        app.state.standings = raw.classes ?? [];
+        app.state.meta = raw.meta ?? {};
+      } else {
+        const response = await fetch('/data/standings.json');
+        const raw = await response.json();
+        app.state.standings = raw.classes ?? raw;
+        app.state.meta = raw.meta ?? {};
+        app.state.meta.seasonName = app.state.meta.seasonName || 'LMU League';
+        await hydrateSchedule();
+      }
+      if (app.state.classIdx >= app.state.standings.length) app.state.classIdx = 0;
       app.buildClassTags();
       return true;
     } catch (error) {
@@ -116,7 +126,7 @@
   }
 
   async function doReload() {
-    const ok = await fetchData();
+    const ok = await fetchData({ bust: true });
     if (!ok) return;
     app.standings.loadClass(app.state.classIdx);
     doSetScreen(app.state.screen, true);
@@ -136,6 +146,20 @@
       app.standings.loadClass(app.state.classIdx);
       setTimeout(() => app.elements.veil.classList.remove('show'), 150);
     }, app.config.switchAnimMs);
+  }
+
+  async function doSetLeague(league, nextState = {}) {
+    const nextLeague = league === 'gt7' ? 'gt7' : 'lmu';
+    if (app.state.league === nextLeague) return;
+    app.state.league = nextLeague;
+    app.state.classIdx = Math.max(0, Number(nextState.classIdx ?? 0) || 0);
+    app.state.scrollPos = 0;
+    app.state.isPaused = !!nextState.paused;
+    const ok = await fetchData();
+    if (!ok) return;
+    app.standings.loadClass(app.state.classIdx);
+    doSetScreen(nextState.screen || 'standings', true);
+    app.reportState();
   }
 
   function doSetScreen(nextScreen, skipVeil = false) {
@@ -180,16 +204,30 @@
 
   function handleSSE(message) {
     if (message.type === 'state') {
+      app.state.league = message.league === 'gt7' ? 'gt7' : 'lmu';
       app.state.classIdx = message.classIdx ?? 0;
       app.state.isPaused = message.paused ?? false;
       app.state.screen = message.screen ?? 'standings';
-      app.standings.loadClass(app.state.classIdx);
+      fetchData().then(ok => {
+        if (!ok) return;
+        app.standings.loadClass(app.state.classIdx);
+        doSetScreen(app.state.screen, true);
+      });
+      return;
+    }
+
+    if (message.type === 'stateUpdate') {
+      app.state.league = message.league === 'gt7' ? 'gt7' : 'lmu';
+      app.state.classIdx = message.classIdx ?? 0;
+      app.state.isPaused = message.paused ?? false;
+      app.state.screen = message.screen ?? 'standings';
       doSetScreen(app.state.screen, true);
       return;
     }
 
     if (message.type === 'command') {
       switch (message.cmd) {
+        case 'setLeague': doSetLeague(message.league, message); break;
         case 'pause': doPause(); break;
         case 'resume': doResume(); break;
         case 'switchClass': doSwitchClass(message.idx); break;
@@ -210,6 +248,15 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     app.cacheElements();
+    try {
+      const stateRes = await fetch('/api/state');
+      const remoteState = await stateRes.json();
+      app.state.league = remoteState.league === 'gt7' ? 'gt7' : 'lmu';
+      app.state.classIdx = remoteState.classIdx ?? app.state.classIdx;
+      app.state.screen = remoteState.screen ?? app.state.screen;
+      app.state.isPaused = remoteState.paused ?? app.state.isPaused;
+    } catch (_) {}
+
     const ok = await fetchData();
     if (!ok) return;
 
