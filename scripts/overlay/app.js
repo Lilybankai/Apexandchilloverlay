@@ -58,7 +58,10 @@
   async function fetchData({ bust = false } = {}) {
     try {
       if (app.state.league === 'gt7') {
-        const response = await fetch(`/api/gt7/data${bust ? '?refresh=1' : ''}`);
+        const id = encodeURIComponent(app.state.gt7LeagueId);
+        const response = await fetch(
+          bust ? `/api/gt7/data?leagueId=${id}&refresh=1` : `/api/gt7/data?leagueId=${id}`
+        );
         const raw = await response.json();
         app.state.standings = raw.classes ?? [];
         app.state.meta = raw.meta ?? {};
@@ -80,6 +83,7 @@
   }
 
   function updateCountdown() {
+    if (app.state.screen === 'career') return;
     const nextRace = app.state.meta.nextRace;
     if (!nextRace?.date) return;
 
@@ -110,6 +114,8 @@
     app.elements.pauseBadge.classList.remove('show');
     if (app.state.screen === 'standings') {
       app.standings.continueScroll();
+    } else if (app.state.screen === 'career') {
+      app.career.continueScroll();
     } else {
       app.races.scheduleNextRound(500);
     }
@@ -118,14 +124,24 @@
 
   function doResetTop() {
     app.state.scrollPos = 0;
-    app.elements.tableBody.style.transform = 'translateY(0)';
-    if (!app.state.isPaused && app.state.screen === 'standings') {
-      app.standings.continueScroll();
+    if (app.state.screen === 'career' && app.elements.careerBody) {
+      app.elements.careerBody.style.transform = 'translateY(0)';
+      if (!app.state.isPaused) app.career.continueScroll();
+    } else {
+      app.elements.tableBody.style.transform = 'translateY(0)';
+      if (!app.state.isPaused && app.state.screen === 'standings') {
+        app.standings.continueScroll();
+      }
     }
     app.reportState();
   }
 
   async function doReload() {
+    if (app.state.screen === 'career' && app.state.league === 'gt7') {
+      const ok = await app.career.load({ bust: true });
+      if (!ok) return;
+      return;
+    }
     const ok = await fetchData({ bust: true });
     if (!ok) return;
     app.standings.loadClass(app.state.classIdx);
@@ -133,6 +149,7 @@
   }
 
   function doSwitchClass(idx) {
+    if (app.state.screen === 'career') return;
     if (app.state.screen !== 'standings') {
       app.state.classIdx = idx;
       app.standings.loadClass(app.state.classIdx);
@@ -152,6 +169,7 @@
     const nextLeague = league === 'gt7' ? 'gt7' : 'lmu';
     if (app.state.league === nextLeague) return;
     app.state.league = nextLeague;
+    if (nextState.gt7LeagueId) app.state.gt7LeagueId = nextState.gt7LeagueId;
     app.state.classIdx = Math.max(0, Number(nextState.classIdx ?? 0) || 0);
     app.state.scrollPos = 0;
     app.state.isPaused = !!nextState.paused;
@@ -162,26 +180,44 @@
     app.reportState();
   }
 
+  function resolveScreen(nextScreen) {
+    if (nextScreen === 'races' || nextScreen === 'schedule') return nextScreen;
+    if (nextScreen === 'career') return app.state.league === 'gt7' ? 'career' : 'standings';
+    return 'standings';
+  }
+
   function doSetScreen(nextScreen, skipVeil = false) {
-    app.state.screen = nextScreen === 'races' || nextScreen === 'schedule' ? nextScreen : 'standings';
+    app.state.screen = resolveScreen(nextScreen);
 
     const switchViews = () => {
       app.elements.viewStandings.classList.toggle('active', app.state.screen === 'standings');
       app.elements.viewRaces.classList.toggle('active', app.state.screen === 'races');
       app.elements.viewSchedule.classList.toggle('active', app.state.screen === 'schedule');
+      if (app.elements.viewCareer) {
+        app.elements.viewCareer.classList.toggle('active', app.state.screen === 'career');
+      }
       app.elements.hdrTitle.textContent =
-        app.state.screen === 'races'
-          ? 'Race Results'
-          : app.state.screen === 'schedule'
-            ? 'Race Schedule'
-            : 'Championship Standings';
+        app.state.screen === 'career'
+          ? 'Career Records'
+          : app.state.screen === 'races'
+            ? 'Race Results'
+            : app.state.screen === 'schedule'
+              ? 'Race Schedule'
+              : 'Championship Standings';
 
       if (app.state.screen === 'standings') {
         clearTimeout(app.state.podiumTimer);
+        app.buildClassTags();
         app.standings.continueScroll();
       } else if (app.state.screen === 'races') {
         clearTimeout(app.state.timer);
         app.races.startRacesCycle();
+      } else if (app.state.screen === 'career') {
+        clearTimeout(app.state.timer);
+        clearTimeout(app.state.podiumTimer);
+        if (app.state.league === 'gt7') {
+          app.career.load().then(() => {});
+        }
       } else {
         clearTimeout(app.state.timer);
         clearTimeout(app.state.podiumTimer);
@@ -207,7 +243,8 @@
       app.state.league = message.league === 'gt7' ? 'gt7' : 'lmu';
       app.state.classIdx = message.classIdx ?? 0;
       app.state.isPaused = message.paused ?? false;
-      app.state.screen = message.screen ?? 'standings';
+      app.state.screen = resolveScreen(message.screen ?? 'standings');
+      if (message.gt7LeagueId) app.state.gt7LeagueId = message.gt7LeagueId;
       fetchData().then(ok => {
         if (!ok) return;
         app.standings.loadClass(app.state.classIdx);
@@ -224,12 +261,26 @@
     }
 
     if (message.type === 'command') {
+      if (message.gt7LeagueId) app.state.gt7LeagueId = message.gt7LeagueId;
       switch (message.cmd) {
         case 'setLeague': doSetLeague(message.league, message); break;
+        case 'setGt7League':
+          fetchData().then(ok => {
+            if (!ok) return;
+            app.standings.loadClass(app.state.classIdx);
+            if (app.state.screen === 'career') {
+              app.career.load().then(() => {});
+            } else {
+              doSetScreen(app.state.screen, true);
+            }
+          });
+          break;
         case 'pause': doPause(); break;
         case 'resume': doResume(); break;
         case 'switchClass': doSwitchClass(message.idx); break;
-        case 'switchNext': app.standings.switchClass(); break;
+        case 'switchNext':
+          if (app.state.screen !== 'career') app.standings.switchClass();
+          break;
         case 'resetTop': doResetTop(); break;
         case 'reload': doReload(); break;
         case 'setScreen': doSetScreen(message.screen); break;
@@ -251,8 +302,9 @@
       const remoteState = await stateRes.json();
       app.state.league = remoteState.league === 'gt7' ? 'gt7' : 'lmu';
       app.state.classIdx = remoteState.classIdx ?? app.state.classIdx;
-      app.state.screen = remoteState.screen ?? app.state.screen;
+      app.state.screen = resolveScreen(remoteState.screen ?? app.state.screen);
       app.state.isPaused = remoteState.paused ?? app.state.isPaused;
+      if (remoteState.gt7LeagueId) app.state.gt7LeagueId = remoteState.gt7LeagueId;
     } catch (_) {}
 
     const ok = await fetchData();

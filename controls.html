@@ -20,6 +20,7 @@
     .section-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; }
     .league-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .screen-grid, .class-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .screen-grid .screen-btn-wide { grid-column: 1 / -1; }
     .screen-btn, .class-btn, .ctrl-btn, .reload-btn {
       border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text);
       cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; font-family: 'Orbitron', monospace;
@@ -43,6 +44,20 @@
     .shortcuts-grid { display: grid; grid-template-columns: repeat(2, auto 1fr); gap: 8px 20px; align-items: center; }
     kbd { min-width: 32px; height: 24px; padding: 0 8px; border-radius: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); font-family: 'Orbitron', monospace; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
     .key-label { font-size: 13px; color: var(--dim); }
+    .season-select {
+      width: 100%;
+      padding: 14px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .season-select:focus { outline: none; border-color: rgba(0,212,255,0.45); }
   </style>
 </head>
 <body>
@@ -63,12 +78,18 @@
       </div>
     </div>
 
+    <div class="section" id="section-gt7-season" style="display:none">
+      <div class="section-label">GT7 season (Sim League Pro)</div>
+      <select id="sel-gt7-season" class="season-select" aria-label="GT7 season"></select>
+    </div>
+
     <div class="section">
       <div class="section-label">Active Screen</div>
       <div class="screen-grid">
         <button class="screen-btn active" id="btn-standings" onclick="setScreen('standings')"><span class="btn-icon">📊</span>Standings</button>
         <button class="screen-btn" id="btn-races" onclick="setScreen('races')"><span class="btn-icon">🏆</span>Race Results</button>
         <button class="screen-btn" id="btn-schedule" onclick="setScreen('schedule')"><span class="btn-icon">🗓</span>Race Schedule</button>
+        <button class="screen-btn screen-btn-wide" id="btn-career" style="display:none" onclick="setScreen('career')"><span class="btn-icon">📜</span>Career records</button>
       </div>
     </div>
 
@@ -89,8 +110,8 @@
 
     <div class="section">
       <div class="section-label">Standings Data</div>
-      <button class="reload-btn" onclick="reloadData()">Reload standings.json</button>
-      <div class="reload-hint">Edit data/standings.json then click above to update overlay</div>
+      <button class="reload-btn" id="btn-reload-data" onclick="reloadData()">Reload standings.json</button>
+      <div class="reload-hint" id="reload-hint">Edit data/standings.json then click above to update overlay</div>
     </div>
 
     <div class="shortcuts">
@@ -103,13 +124,22 @@
         <kbd>S</kbd><span class="key-label">Standings screen</span>
         <kbd>W</kbd><span class="key-label">Race results screen</span>
         <kbd>G</kbd><span class="key-label">Race schedule screen</span>
+        <kbd>H</kbd><span class="key-label" id="shortcut-career-label">Career records (GT7)</span>
       </div>
     </div>
   </div>
 
   <script>
-    let state = { league: 'lmu', classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+    let state = {
+      league: 'lmu',
+      classIdx: 0,
+      paused: false,
+      scrollPos: 0,
+      screen: 'standings',
+      gt7LeagueId: 'f2d6eae4-9591-4e29-bc77-ec2e0197c32e'
+    };
     let standingsMeta = [];
+    let gt7Seasons = [];
     let evtSource = null;
 
     function connectSSE() {
@@ -124,7 +154,8 @@
             classIdx: msg.classIdx ?? 0,
             paused: !!msg.paused,
             scrollPos: msg.scrollPos ?? 0,
-            screen: msg.screen ?? 'standings'
+            screen: msg.screen ?? 'standings',
+            gt7LeagueId: msg.gt7LeagueId || state.gt7LeagueId
           };
           renderUI();
         }
@@ -148,13 +179,16 @@
       if (data.state) {
         state = {
           ...data.state,
-          league: data.state.league === 'gt7' ? 'gt7' : 'lmu'
+          league: data.state.league === 'gt7' ? 'gt7' : 'lmu',
+          gt7LeagueId: data.state.gt7LeagueId || state.gt7LeagueId
         };
         renderUI();
       }
+      return data;
     }
 
     function setScreen(next) {
+      if (next === 'career' && state.league !== 'gt7') return;
       state.screen = next;
       cmd('setScreen', { screen: next });
       renderUI();
@@ -164,7 +198,6 @@
       const league = next === 'gt7' ? 'gt7' : 'lmu';
       state.league = league;
       state.classIdx = 0;
-      state.screen = 'standings';
       cmd('setLeague', { league });
       renderUI();
       loadMeta();
@@ -189,23 +222,50 @@
     function resetTop() { cmd('resetTop'); }
     function reloadData() { cmd('reload'); loadMeta(true); }
 
+    function renderGt7SeasonSelect() {
+      const sel = document.getElementById('sel-gt7-season');
+      if (!gt7Seasons.length || state.league !== 'gt7') return;
+      const want = state.gt7LeagueId;
+      sel.innerHTML = gt7Seasons.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+      sel.value = gt7Seasons.some(s => s.id === want) ? want : gt7Seasons[0].id;
+    }
+
+    async function onGt7SeasonChange() {
+      const sel = document.getElementById('sel-gt7-season');
+      const id = sel.value;
+      if (!id || id === state.gt7LeagueId) return;
+      await cmd('setGt7League', { leagueId: id });
+      await loadMeta(true);
+    }
+
     function renderUI() {
       document.getElementById('btn-pause').classList.toggle('paused', state.paused);
       document.getElementById('btn-pause').textContent = state.paused ? 'Resume Scroll' : 'Pause Scroll';
       document.getElementById('btn-standings').classList.toggle('active', state.screen === 'standings');
       document.getElementById('btn-races').classList.toggle('active', state.screen === 'races');
       document.getElementById('btn-schedule').classList.toggle('active', state.screen === 'schedule');
+      document.getElementById('btn-career').classList.toggle('active', state.screen === 'career');
       document.getElementById('btn-league-lmu').classList.toggle('active', state.league !== 'gt7');
       document.getElementById('btn-league-gt7').classList.toggle('active', state.league === 'gt7');
+      const gt7 = state.league === 'gt7';
+      document.getElementById('section-gt7-season').style.display = gt7 ? '' : 'none';
+      document.getElementById('btn-career').style.display = gt7 ? '' : 'none';
+      document.getElementById('shortcut-career-label').style.opacity = gt7 ? '1' : '0.45';
       document.getElementById('section-class').style.display = state.screen === 'standings' ? '' : 'none';
+      document.getElementById('btn-reload-data').textContent = gt7 ? 'Reload GT7 data (API)' : 'Reload standings.json';
+      document.getElementById('reload-hint').textContent = gt7
+        ? 'Refetches Sim League Pro for the selected season and clears the short cache.'
+        : 'Edit data/standings.json then click above to update overlay';
+      if (gt7) renderGt7SeasonSelect();
       document.querySelectorAll('.class-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.idx, 10) === state.classIdx);
       });
     }
 
     async function loadMeta(bust = false) {
+      const id = encodeURIComponent(state.gt7LeagueId);
       const url = state.league === 'gt7'
-        ? `/api/gt7/data${bust ? '?refresh=1' : ''}`
+        ? (bust ? `/api/gt7/data?leagueId=${id}&refresh=1` : `/api/gt7/data?leagueId=${id}`)
         : '/data/standings.json';
       const res = await fetch(url);
       const raw = await res.json();
@@ -237,15 +297,32 @@
         case 'KeyS': setScreen('standings'); break;
         case 'KeyW': setScreen('races'); break;
         case 'KeyG': setScreen('schedule'); break;
+        case 'KeyH':
+          if (state.league === 'gt7') setScreen('career');
+          break;
       }
     });
 
     async function init() {
       try {
+        const res = await fetch('/api/gt7/seasons');
+        const data = await res.json();
+        gt7Seasons = data.seasons || [];
+      } catch (_) { gt7Seasons = []; }
+      try {
         const res = await fetch('/api/state');
-        state = await res.json();
+        const remote = await res.json();
+        state = {
+          league: remote.league === 'gt7' ? 'gt7' : 'lmu',
+          classIdx: remote.classIdx ?? 0,
+          paused: !!remote.paused,
+          scrollPos: remote.scrollPos ?? 0,
+          screen: remote.screen ?? 'standings',
+          gt7LeagueId: remote.gt7LeagueId || state.gt7LeagueId
+        };
         setConn(true);
       } catch (_) { setConn(false); }
+      document.getElementById('sel-gt7-season').addEventListener('change', onGt7SeasonChange);
       await loadMeta();
       renderUI();
       connectSSE();

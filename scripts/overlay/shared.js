@@ -14,6 +14,9 @@
       scrollPos: 0,
       isPaused: false,
       screen: 'standings',
+      gt7LeagueId: 'f2d6eae4-9591-4e29-bc77-ec2e0197c32e',
+      careerDrivers: [],
+      careerMeta: {},
       timer: null,
       evtSource: null,
       reportTick: null,
@@ -27,6 +30,7 @@
         viewStandings: document.getElementById('view-standings'),
         viewRaces: document.getElementById('view-races'),
         viewSchedule: document.getElementById('view-schedule'),
+        viewCareer: document.getElementById('view-career'),
         colHeaders: document.getElementById('col-hdrs'),
         hdrTitle: document.getElementById('hdr-title'),
         hdrSeason: document.getElementById('hdr-season'),
@@ -43,7 +47,10 @@
         cardP1: document.getElementById('card-p1'),
         cardP2: document.getElementById('card-p2'),
         cardP3: document.getElementById('card-p3'),
-        scheduleList: document.getElementById('schedule-list')
+        scheduleList: document.getElementById('schedule-list'),
+        careerWrap: document.getElementById('career-wrap'),
+        careerBody: document.getElementById('career-body'),
+        careerProgressBar: document.getElementById('career-progress-bar')
       };
     },
     roundCount() {
@@ -60,6 +67,13 @@
       return 0;
     },
     buildClassTags() {
+      if (this.state.screen === 'career') {
+        this.elements.classTags.innerHTML = '';
+        const seasons = (this.state.careerMeta.seasons || []).map(s => s.label).filter(Boolean).join(' · ');
+        this.elements.hdrSeason.textContent = seasons || 'Career records';
+        this.elements.footerInfo.textContent = `${this.state.careerDrivers.length} Drivers · GT7`;
+        return;
+      }
       const cls = this.state.standings[this.state.classIdx];
       if (!cls) return;
       const tags = this.state.standings
@@ -85,7 +99,8 @@
             classIdx: this.state.classIdx,
             scrollPos: this.state.scrollPos,
             screen: this.state.screen,
-            league: this.state.league
+            league: this.state.league,
+            ...(this.state.league === 'gt7' ? { gt7LeagueId: this.state.gt7LeagueId } : {})
           })
         })
           .then(res => {

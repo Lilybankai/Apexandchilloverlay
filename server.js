@@ -9,7 +9,13 @@ const COMMUNITY_ID = 3846;
 const CHAMPIONSHIP_ID = 23082;
 const SLP_BASE = 'https://simleaguepro.com/api/v1';
 const SLP_COMMUNITY_ID = 'eb1236b1-e469-4fe7-8f1a-a7d8a30d6c65';
-const SLP_LEAGUE_ID = 'f2d6eae4-9591-4e29-bc77-ec2e0197c32e';
+/** Whitelisted Sim League Pro league UUIDs (past + current). Unknown IDs rejected on /api/gt7/data. */
+const SLP_GT7_SEASONS = [
+  { id: 'f2d6eae4-9591-4e29-bc77-ec2e0197c32e', label: 'Season 4' },
+  { id: '448d65ed-d6dd-4087-bebb-6008c62a92ad', label: 'Season 3' }
+];
+const SLP_GT7_LEAGUE_ID_DEFAULT = SLP_GT7_SEASONS[0].id;
+const slpGt7LeagueIdSet = new Set(SLP_GT7_SEASONS.map(s => s.id));
 
 // Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
 app.set('trust proxy', 1);
@@ -25,9 +31,16 @@ let serverState = {
   paused: false,
   scrollPos: 0,
   screen: 'standings',
+  gt7LeagueId: SLP_GT7_LEAGUE_ID_DEFAULT,
   leagueState: {
     lmu: { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' },
-    gt7: { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' }
+    gt7: {
+      classIdx: 0,
+      paused: false,
+      scrollPos: 0,
+      screen: 'standings',
+      gt7LeagueId: SLP_GT7_LEAGUE_ID_DEFAULT
+    }
   }
 };
 const simgridCache = {};
@@ -259,6 +272,87 @@ function normalizeGt7Data(driversList, leaguePayload) {
   };
 }
 
+function resolveGt7LeagueIdForDataQuery(raw) {
+  if (raw == null || raw === '') return SLP_GT7_LEAGUE_ID_DEFAULT;
+  const id = String(raw).trim();
+  return slpGt7LeagueIdSet.has(id) ? id : null;
+}
+
+function buildCareerStats(driversList, leagueBundles) {
+  const driverLookup = new Map();
+  (Array.isArray(driversList) ? driversList : []).forEach(entry => {
+    const key = normalizeKey(entry.username);
+    if (key) driverLookup.set(key, entry);
+  });
+
+  const byUser = new Map();
+  for (const bundle of leagueBundles) {
+    const payload = bundle.payload || {};
+    const results = Array.isArray(payload.league_results) ? payload.league_results : [];
+    for (const row of results) {
+      if (row.reserve) continue;
+      const key = normalizeKey(row.username);
+      if (!key) continue;
+      const enriched = driverLookup.get(key) || {};
+      if (!byUser.has(key)) {
+        byUser.set(key, {
+          username: row.username,
+          displayName: String(
+            row.platform_username
+            || row.username
+            || enriched.community_username
+            || row.username
+          ).trim(),
+          titles: 0,
+          wins: 0,
+          podiums: 0,
+          qualifyingWins: 0,
+          qualifyingPodiums: 0
+        });
+      }
+      const agg = byUser.get(key);
+      const nameFromRow = String(row.platform_username || '').trim();
+      if (nameFromRow) agg.displayName = nameFromRow;
+      else if (!agg.displayName && enriched.community_username) {
+        agg.displayName = String(enriched.community_username).trim();
+      }
+      agg.wins += Number(row.wins || 0);
+      agg.podiums += Number(row.podiums || 0);
+      agg.qualifyingWins += Number(row.qualifying_wins || 0);
+      agg.qualifyingPodiums += Number(row.qualifying_podiums || 0);
+      if (Number(row.position) === 1) agg.titles += 1;
+    }
+  }
+
+  const drivers = Array.from(byUser.values()).sort((a, b) => {
+    if (b.titles !== a.titles) return b.titles - a.titles;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return b.podiums - a.podiums;
+  });
+
+  const metaSeasons = leagueBundles.map(b => ({
+    id: b.id,
+    label: b.label,
+    season: b.payload?.season ?? null,
+    name: b.payload?.name ?? null
+  }));
+
+  return { drivers, meta: { seasons: metaSeasons } };
+}
+
+function persistLeagueSlice() {
+  const base = {
+    classIdx: serverState.classIdx,
+    paused: serverState.paused,
+    scrollPos: serverState.scrollPos,
+    screen: serverState.screen
+  };
+  if (serverState.league === 'gt7') {
+    return { ...base, gt7LeagueId: serverState.gt7LeagueId };
+  }
+  return base;
+}
+
 // ── SSE endpoint  (overlay + controls both connect here) ─────────────────────
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type',       'text/event-stream');
@@ -290,19 +384,17 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/state', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { classIdx, scrollPos, screen, league } = body;
+    const { classIdx, scrollPos, screen, league, gt7LeagueId } = body;
     if (league === 'lmu' || league === 'gt7') serverState.league = league;
     if (classIdx  != null) serverState.classIdx  = classIdx;
     // Pause/resume is command-authoritative only (/api/command). Overlay scroll ticks POST
     // often; accepting paused here races with pause commands and can undo pause.
     if (scrollPos != null) serverState.scrollPos = scrollPos;
     if (screen    != null) serverState.screen    = screen;
-    serverState.leagueState[serverState.league] = {
-      classIdx: serverState.classIdx,
-      paused: serverState.paused,
-      scrollPos: serverState.scrollPos,
-      screen: serverState.screen
-    };
+    if (gt7LeagueId != null && slpGt7LeagueIdSet.has(String(gt7LeagueId).trim())) {
+      serverState.gt7LeagueId = String(gt7LeagueId).trim();
+    }
+    serverState.leagueState[serverState.league] = persistLeagueSlice();
     broadcast({ type: 'stateUpdate', ...serverState });
     res.json({ ok: true });
   } catch (err) {
@@ -315,27 +407,45 @@ app.post('/api/state', (req, res) => {
 app.post('/api/command', (req, res) => {
   const { cmd, ...args } = req.body;
 
+  if (cmd === 'setGt7League') {
+    const raw = args.leagueId;
+    const id = raw != null && raw !== '' ? String(raw).trim() : '';
+    if (!slpGt7LeagueIdSet.has(id)) {
+      return res.status(400).json({ ok: false, error: 'invalid_gt7_league' });
+    }
+    serverState.gt7LeagueId = id;
+    serverState.leagueState.gt7 = {
+      ...serverState.leagueState.gt7,
+      gt7LeagueId: id
+    };
+  }
+
   // keep server state in sync so new clients get the right picture
   if (cmd === 'setLeague') {
+    serverState.leagueState[serverState.league] = persistLeagueSlice();
     const nextLeague = args.league === 'gt7' ? 'gt7' : 'lmu';
     serverState.league = nextLeague;
-    const leagueState = serverState.leagueState[nextLeague] || { classIdx: 0, paused: false, scrollPos: 0, screen: 'standings' };
+    const leagueState = serverState.leagueState[nextLeague] || {
+      classIdx: 0,
+      paused: false,
+      scrollPos: 0,
+      screen: 'standings',
+      gt7LeagueId: SLP_GT7_LEAGUE_ID_DEFAULT
+    };
     serverState.classIdx = leagueState.classIdx;
     serverState.paused = leagueState.paused;
     serverState.scrollPos = leagueState.scrollPos;
     serverState.screen = leagueState.screen;
+    if (nextLeague === 'gt7') {
+      serverState.gt7LeagueId = leagueState.gt7LeagueId || SLP_GT7_LEAGUE_ID_DEFAULT;
+    }
   }
   if (cmd === 'pause')       serverState.paused    = true;
   if (cmd === 'resume')      serverState.paused    = false;
   if (cmd === 'switchClass') serverState.classIdx  = args.idx;
   if (cmd === 'resetTop')    serverState.scrollPos = 0;
   if (cmd === 'setScreen')   serverState.screen    = args.screen;
-  serverState.leagueState[serverState.league] = {
-    classIdx: serverState.classIdx,
-    paused: serverState.paused,
-    scrollPos: serverState.scrollPos,
-    screen: serverState.screen
-  };
+  serverState.leagueState[serverState.league] = persistLeagueSlice();
 
   broadcast({
     type: 'command',
@@ -343,7 +453,8 @@ app.post('/api/command', (req, res) => {
     ...args,
     classIdx: serverState.classIdx,
     screen: serverState.screen,
-    paused: serverState.paused
+    paused: serverState.paused,
+    gt7LeagueId: serverState.gt7LeagueId
   });
   res.json({ ok: true, state: serverState });
 });
@@ -397,14 +508,38 @@ app.get('/api/lmu/data', async (_req, res) => {
   }
 });
 
+app.get('/api/gt7/seasons', (_req, res) => {
+  res.json({ seasons: SLP_GT7_SEASONS });
+});
+
 app.get('/api/gt7/data', async (req, res) => {
   try {
+    const leagueId = resolveGt7LeagueIdForDataQuery(req.query.leagueId);
+    if (!leagueId) {
+      return res.status(404).json({ error: true, message: 'Unknown GT7 league id' });
+    }
     if (req.query.refresh === '1') clearSlpCache();
     const [drivers, league] = await Promise.all([
       slpFetchAllDrivers(SLP_COMMUNITY_ID),
-      slpFetch(`/leagues/${SLP_LEAGUE_ID}.json?include_results=true`)
+      slpFetch(`/leagues/${leagueId}.json?include_results=true`)
     ]);
     res.json(normalizeGt7Data(drivers, league));
+  } catch (error) {
+    res.status(502).json({ error: true, message: String(error?.message || error) });
+  }
+});
+
+app.get('/api/gt7/career', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') clearSlpCache();
+    const drivers = await slpFetchAllDrivers(SLP_COMMUNITY_ID);
+    const bundles = await Promise.all(
+      SLP_GT7_SEASONS.map(async season => {
+        const payload = await slpFetch(`/leagues/${season.id}.json?include_results=true`);
+        return { id: season.id, label: season.label, payload };
+      })
+    );
+    res.json(buildCareerStats(drivers, bundles));
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }
