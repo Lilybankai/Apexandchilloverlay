@@ -296,9 +296,8 @@
 
   <div class="cg">
     <p class="hint">
-      If <strong>podium-test.glb</strong> sits next to this HTML, it loads automatically; otherwise drop a .glb on the canvas.<br><br>
-      Your .glb animation clips should be named:<br>
-      <strong>Walk</strong>, <strong>Idle</strong>, <strong>Celebrate</strong>
+      Drops <strong>walking.glb</strong>, <strong>idle.glb</strong>, and <strong>celebrate.glb</strong> next to this HTML and they load automatically.<br><br>
+      Or drag .glb files onto the canvas (file name is used to pick <strong>Walk</strong> / <strong>Idle</strong> / <strong>Celebrate</strong>).
     </p>
   </div>
 </div>
@@ -467,10 +466,36 @@ function createPrimitive(slot) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const loader   = new GLTFLoader();
-let droppedGLB = null; // set from default file or user drop
+/**
+ * Active character source. Either:
+ *   • a full gltf from GLTFLoader (single-file mode), OR
+ *   • a synthetic `{ scene, animations }` we build by merging multiple GLBs.
+ * buildChar() only touches `.scene` and `.animations`, so both shapes work.
+ */
+let droppedGLB = null;
 
-/** Same folder as this page — your test export */
-const DEFAULT_GLB_URL = new URL('podium-test.glb', import.meta.url).href;
+/**
+ * Multi-file default: one GLB per clip, sharing the same (Mixamo-style) skeleton.
+ * The "base" file provides the mesh + rest pose; clips are pulled from every file
+ * and renamed so the rest of the code can still find them via `findClip(..., 'walk')`.
+ */
+const DEFAULT_CLIP_SOURCES = [
+  { role: 'Walk',      url: new URL('walking.glb',   import.meta.url).href, isBase: true },
+  { role: 'Idle',      url: new URL('idle.glb',      import.meta.url).href },
+  { role: 'Celebrate', url: new URL('celebrate.glb', import.meta.url).href },
+];
+
+function loadGLB(url) {
+  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+}
+
+/** Guess a clip role from a filename — handy for drag-and-drop multi-file loads. */
+function roleFromFilename(name) {
+  if (/walk/i.test(name)) return 'Walk';
+  if (/idle|stand/i.test(name)) return 'Idle';
+  if (/celebrat|victory|cheer|win/i.test(name)) return 'Celebrate';
+  return null;
+}
 
 /** Target character height in world units (matches the primitive placeholder). */
 const GLB_TARGET_HEIGHT = 1.75;
@@ -508,8 +533,12 @@ function applyLoadedGLB(gltf, displayName) {
   droppedGLB = gltf;
   measureGLBNormalization(gltf.scene);
 
+  const nClips = gltf.animations.length;
   const clipNames = gltf.animations.map(a => a.name).join(', ') || 'none';
-  log(`Loaded "${displayName}" — ${gltf.animations.length} clips: ${clipNames}`, 'ok');
+  log(`Loaded "${displayName}" — ${nClips} clips: ${clipNames}`, nClips ? 'ok' : 'warn');
+  if (!nClips) {
+    log('No animations in GLB — re-export with Walk/Idle/Celebrate clips for real motion', 'warn');
+  }
   const dropEl = document.getElementById('drop-zone');
   dropEl.textContent = `✓ ${displayName} ready — trigger a walk-in`;
   dropEl.classList.add('loaded');
@@ -689,6 +718,21 @@ function animate(now) {
       if (t >= 1) onArrival(slot);
     }
 
+    // ── Fallback motion for GLBs that shipped with no animation clips ──
+    // Without this, a clipless GLB would just stand frozen once it arrives.
+    // We can't fake a walk cycle (we don't know the bone names), but we can
+    // bob the whole mesh so it at least reads as "alive".
+    if (!c.isPrim && (!c.clips || c.clips.length === 0)) {
+      c._fallbackT = (c._fallbackT || 0) + dt;
+      const t = c._fallbackT;
+      if (c.state === 'idle') {
+        c.mesh.position.y = c.targetY + Math.sin(t * 1.6) * 0.02;
+      } else if (c.state === 'celebrate') {
+        c.mesh.position.y = c.targetY + Math.abs(Math.sin(t * 3.8)) * 0.18;
+        c.mesh.rotation.y = Math.sin(t * 1.4) * 0.12;
+      }
+    }
+
     // ── Primitive animations ──
     if (c.isPrim) {
       c.mesh._animT += dt;
@@ -821,29 +865,83 @@ const wrap   = document.getElementById('canvas-wrap');
 
 wrap.addEventListener('dragover',  e => { e.preventDefault(); dropEl.classList.add('drag-over'); });
 wrap.addEventListener('dragleave', ()  => dropEl.classList.remove('drag-over'));
-wrap.addEventListener('drop', e => {
+/**
+ * Build a combined `{ scene, animations }` from N loaded GLBs.
+ * All GLBs should share a skeleton (same bone names) — Three.js resolves
+ * animation tracks by node name, so clips authored against one file will
+ * drive a clone of another file's scene as long as the rig matches.
+ */
+function mergeClipSources(entries /* [{gltf, role}] */) {
+  if (!entries.length) return null;
+
+  const base = entries.find(e => e.isBase) || entries[0];
+  const animations = [];
+  for (const e of entries) {
+    if (!e.gltf.animations?.length) continue;
+    const clip = e.gltf.animations[0].clone();
+    if (e.role) clip.name = e.role;
+    animations.push(clip);
+  }
+  return { scene: base.gltf.scene, animations };
+}
+
+wrap.addEventListener('drop', async e => {
   e.preventDefault();
   dropEl.classList.remove('drag-over');
 
-  const file = e.dataTransfer.files[0];
-  if (!file?.name.endsWith('.glb')) { log('Drop a .glb file', 'warn'); return; }
+  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.glb'));
+  if (!files.length) { log('Drop one or more .glb files', 'warn'); return; }
 
-  const url = URL.createObjectURL(file);
-  log(`Loading ${file.name}…`, 'info');
+  log(`Loading ${files.length} file${files.length > 1 ? 's' : ''}…`, 'info');
+  const entries = [];
+  for (const f of files) {
+    try {
+      const gltf = await loadGLB(URL.createObjectURL(f));
+      entries.push({
+        gltf,
+        role: roleFromFilename(f.name),
+        isBase: /walk/i.test(f.name),
+        name: f.name,
+      });
+    } catch (err) {
+      log(`GLB load error: ${f.name} — ${err.message}`, 'warn');
+    }
+  }
+  if (!entries.length) return;
 
-  loader.load(url, gltf => applyLoadedGLB(gltf, file.name), undefined, err => {
-    log(`GLB load error: ${err.message}`, 'warn');
-  });
+  if (entries.length === 1) {
+    // Single-file drop: assume clips are already inside it, don't rename.
+    applyLoadedGLB(entries[0].gltf, entries[0].name);
+    return;
+  }
+
+  const combined = mergeClipSources(entries);
+  if (combined) applyLoadedGLB(combined, entries.map(e => e.name).join(' + '));
 });
 
-loader.load(
-  DEFAULT_GLB_URL,
-  gltf => applyLoadedGLB(gltf, 'podium-test.glb'),
-  undefined,
-  () => {
-    log('No podium-test.glb next to this page — placeholder figures, or drop a .glb to load', 'info');
+async function loadDefaultClipSet() {
+  const entries = [];
+  for (const src of DEFAULT_CLIP_SOURCES) {
+    try {
+      const gltf = await loadGLB(src.url);
+      entries.push({ gltf, role: src.role, isBase: src.isBase, name: src.url.split('/').pop() });
+    } catch {
+      // Silent per-file miss; we'll summarize at the end.
+    }
   }
-);
+  if (!entries.length) {
+    log('No default GLBs next to this page — drop .glb file(s) to load', 'info');
+    return;
+  }
+  const missing = DEFAULT_CLIP_SOURCES.filter(s => !entries.some(e => e.role === s.role));
+  if (missing.length) {
+    log(`Missing default clip file(s): ${missing.map(m => m.role).join(', ')}`, 'warn');
+  }
+  const combined = mergeClipSources(entries);
+  if (combined) applyLoadedGLB(combined, entries.map(e => e.name).join(' + '));
+}
+
+loadDefaultClipSet();
 
 log('Three.js ready', 'ok');
 log('Hit "Full Podium" to test the sequence', 'info');
