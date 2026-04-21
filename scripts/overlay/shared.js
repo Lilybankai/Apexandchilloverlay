@@ -71,7 +71,8 @@
         this.elements.classTags.innerHTML = '';
         const seasons = (this.state.careerMeta.seasons || []).map(s => s.label).filter(Boolean).join(' · ');
         this.elements.hdrSeason.textContent = seasons || 'Career records';
-        this.elements.footerInfo.textContent = `${this.state.careerDrivers.length} Drivers · GT7`;
+        this.elements.footerInfo.textContent =
+          `${this.state.careerDrivers.length} drivers · race wins & podiums = every finish (normal + reverse grid)`;
         return;
       }
       const cls = this.state.standings[this.state.classIdx];

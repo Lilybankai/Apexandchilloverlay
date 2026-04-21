@@ -278,6 +278,59 @@ function resolveGt7LeagueIdForDataQuery(raw) {
   return slpGt7LeagueIdSet.has(id) ? id : null;
 }
 
+function usernameKeysFromRaceResults(payload) {
+  const keys = new Set();
+  for (const race of payload.races || []) {
+    for (const e of race.race_results || []) {
+      const k = normalizeKey(e.username);
+      if (k) keys.add(k);
+    }
+    for (const sub of race.sub_races || []) {
+      for (const e of sub.race_results || []) {
+        const k = normalizeKey(e.username);
+        if (k) keys.add(k);
+      }
+    }
+  }
+  return keys;
+}
+
+function findFirstRaceEntryForKey(payload, usernameKey) {
+  for (const race of payload.races || []) {
+    const buckets = [
+      ...(race.race_results || []),
+      ...(race.sub_races || []).flatMap(sr => sr.race_results || [])
+    ];
+    for (const e of buckets) {
+      if (normalizeKey(e.username) !== usernameKey) continue;
+      return {
+        username: e.username || usernameKey,
+        platform_username: e.platform_username || null
+      };
+    }
+  }
+  return { username: usernameKey, platform_username: null };
+}
+
+/** Each normal + reverse grid race row counts separately (P1 and top-3 finishes). */
+function countRaceWinsAndPodiums(payload, usernameKey) {
+  let wins = 0;
+  let podiums = 0;
+  for (const race of payload.races || []) {
+    const buckets = [
+      ...(race.race_results || []),
+      ...(race.sub_races || []).flatMap(sr => sr.race_results || [])
+    ];
+    for (const e of buckets) {
+      if (normalizeKey(e.username) !== usernameKey) continue;
+      const pos = e.position;
+      if (pos === 1) wins += 1;
+      if (pos != null && pos >= 1 && pos <= 3) podiums += 1;
+    }
+  }
+  return { wins, podiums };
+}
+
 function buildCareerStats(driversList, leagueBundles) {
   const driverLookup = new Map();
   (Array.isArray(driversList) ? driversList : []).forEach(entry => {
@@ -286,9 +339,9 @@ function buildCareerStats(driversList, leagueBundles) {
   });
 
   const byUser = new Map();
+
   for (const bundle of leagueBundles) {
-    const payload = bundle.payload || {};
-    const results = Array.isArray(payload.league_results) ? payload.league_results : [];
+    const results = Array.isArray(bundle.payload?.league_results) ? bundle.payload.league_results : [];
     for (const row of results) {
       if (row.reserve) continue;
       const key = normalizeKey(row.username);
@@ -310,17 +363,58 @@ function buildCareerStats(driversList, leagueBundles) {
           qualifyingPodiums: 0
         });
       }
+    }
+  }
+
+  for (const bundle of leagueBundles) {
+    const payload = bundle.payload || {};
+    for (const key of usernameKeysFromRaceResults(payload)) {
+      if (byUser.has(key)) continue;
+      const enriched = driverLookup.get(key) || {};
+      const hit = findFirstRaceEntryForKey(payload, key);
+      byUser.set(key, {
+        username: hit.username,
+        displayName: String(
+          hit.platform_username
+          || enriched.community_username
+          || hit.username
+          || key
+        ).trim(),
+        titles: 0,
+        wins: 0,
+        podiums: 0,
+        qualifyingWins: 0,
+        qualifyingPodiums: 0
+      });
+    }
+  }
+
+  for (const bundle of leagueBundles) {
+    const payload = bundle.payload || {};
+    const results = Array.isArray(payload.league_results) ? payload.league_results : [];
+    for (const row of results) {
+      if (row.reserve) continue;
+      const key = normalizeKey(row.username);
+      if (!key) continue;
       const agg = byUser.get(key);
+      if (!agg) continue;
       const nameFromRow = String(row.platform_username || '').trim();
       if (nameFromRow) agg.displayName = nameFromRow;
-      else if (!agg.displayName && enriched.community_username) {
-        agg.displayName = String(enriched.community_username).trim();
+      else {
+        const enriched = driverLookup.get(key) || {};
+        if (enriched.community_username) {
+          agg.displayName = String(enriched.community_username).trim();
+        }
       }
-      agg.wins += Number(row.wins || 0);
-      agg.podiums += Number(row.podiums || 0);
       agg.qualifyingWins += Number(row.qualifying_wins || 0);
       agg.qualifyingPodiums += Number(row.qualifying_podiums || 0);
       if (Number(row.position) === 1) agg.titles += 1;
+    }
+
+    for (const [key, agg] of byUser) {
+      const add = countRaceWinsAndPodiums(payload, key);
+      agg.wins += add.wins;
+      agg.podiums += add.podiums;
     }
   }
 
@@ -337,7 +431,15 @@ function buildCareerStats(driversList, leagueBundles) {
     name: b.payload?.name ?? null
   }));
 
-  return { drivers, meta: { seasons: metaSeasons } };
+  return {
+    drivers,
+    meta: {
+      seasons: metaSeasons,
+      winsPodiumsSource: 'race_results_per_race',
+      winsPodiumsNote:
+        'Wins and podiums count every race finish (normal + reverse grid). Titles = championship P1 from league_results.'
+    }
+  };
 }
 
 function persistLeagueSlice() {
