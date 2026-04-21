@@ -296,7 +296,7 @@
 
   <div class="cg">
     <p class="hint">
-      If <strong>.glb</strong> sits next to this HTML, it loads automatically; otherwise drop a .glb on the canvas.<br><br>
+      If <strong>podium-test.glb</strong> sits next to this HTML, it loads automatically; otherwise drop a .glb on the canvas.<br><br>
       Your .glb animation clips should be named:<br>
       <strong>Walk</strong>, <strong>Idle</strong>, <strong>Celebrate</strong>
     </p>
@@ -305,8 +305,9 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
-import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+/** r164+ exports `clone` only, not a SkeletonUtils namespace */
+import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scene
@@ -469,7 +470,7 @@ const loader   = new GLTFLoader();
 let droppedGLB = null; // set from default file or user drop
 
 /** Same folder as this page — your test export */
-const DEFAULT_GLB_URL = new URL('.glb', import.meta.url).href;
+const DEFAULT_GLB_URL = new URL('podium-test.glb', import.meta.url).href;
 
 function applyLoadedGLB(gltf, displayName) {
   droppedGLB = gltf;
@@ -495,7 +496,7 @@ const chars = { p1: null, p2: null, p3: null };
 
 function buildChar(slot) {
   if (droppedGLB) {
-    const mesh  = SkeletonUtils.clone(droppedGLB.scene);
+    const mesh  = cloneSkinnedModel(droppedGLB.scene);
     const mixer = new THREE.AnimationMixer(mesh);
     return { mesh, mixer, clips: droppedGLB.animations, isPrim: false };
   }
@@ -794,10 +795,10 @@ wrap.addEventListener('drop', e => {
 
 loader.load(
   DEFAULT_GLB_URL,
-  gltf => applyLoadedGLB(gltf, '.glb'),
+  gltf => applyLoadedGLB(gltf, 'podium-test.glb'),
   undefined,
   () => {
-    log('No .glb next to this page — placeholder figures, or drop a .glb to load', 'info');
+    log('No podium-test.glb next to this page — placeholder figures, or drop a .glb to load', 'info');
   }
 );
 

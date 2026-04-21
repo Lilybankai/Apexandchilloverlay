@@ -21,13 +21,7 @@ const slpGt7LeagueIdSet = new Set(SLP_GT7_SEASONS.map(s => s.id));
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '256kb' }));
-// character-test.html loads this; express.static ignores dotfiles by default
-app.use((req, res, next) => {
-  if (req.path !== '/.glb') return next();
-  res.type('model/gltf-binary');
-  res.sendFile(path.join(__dirname, '.glb'), { dotfiles: 'allow' }, err => { if (err) next(); });
-});
-app.use(express.static(__dirname)); // serves overlay.html, controls.html, data/, etc.
+app.use(express.static(__dirname)); // serves overlay.html, controls.html, podium-test.glb, data/, etc.
 
 // ── SSE client list & server-side state ──────────────────────────────────────
 let clients     = [];
