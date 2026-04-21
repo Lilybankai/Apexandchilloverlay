@@ -472,8 +472,42 @@ let droppedGLB = null; // set from default file or user drop
 /** Same folder as this page — your test export */
 const DEFAULT_GLB_URL = new URL('podium-test.glb', import.meta.url).href;
 
+/** Target character height in world units (matches the primitive placeholder). */
+const GLB_TARGET_HEIGHT = 1.75;
+/** Uniform scale applied to each clone so the source model fits GLB_TARGET_HEIGHT. */
+let glbNormScale = 1;
+/** Translation (post-scale) that puts feet on y=0 and centers X/Z over the spawn point. */
+const glbNormOffset = new THREE.Vector3();
+
+/**
+ * Inspect the source GLB once and derive a scale + offset so any clone ends up
+ * ~1.75 units tall, feet on the floor, and centered horizontally. Arbitrary GLB
+ * exports can come in wildly different units (mm, cm, m, custom) so auto-fitting
+ * is more reliable than hard-coding a scale.
+ */
+function measureGLBNormalization(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  glbNormScale = size.y > 0 ? GLB_TARGET_HEIGHT / size.y : 1;
+
+  glbNormOffset.set(
+    -((box.max.x + box.min.x) / 2) * glbNormScale,
+    -box.min.y * glbNormScale,
+    -((box.max.z + box.min.z) / 2) * glbNormScale
+  );
+
+  log(
+    `Model bbox ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} → scale ${glbNormScale.toFixed(3)}`,
+    'info'
+  );
+}
+
 function applyLoadedGLB(gltf, displayName) {
   droppedGLB = gltf;
+  measureGLBNormalization(gltf.scene);
+
   const clipNames = gltf.animations.map(a => a.name).join(', ') || 'none';
   log(`Loaded "${displayName}" — ${gltf.animations.length} clips: ${clipNames}`, 'ok');
   const dropEl = document.getElementById('drop-zone');
@@ -496,9 +530,18 @@ const chars = { p1: null, p2: null, p3: null };
 
 function buildChar(slot) {
   if (droppedGLB) {
-    const mesh  = cloneSkinnedModel(droppedGLB.scene);
-    const mixer = new THREE.AnimationMixer(mesh);
-    return { mesh, mixer, clips: droppedGLB.animations, isPrim: false };
+    // Wrapper keeps the spawn-level transform (walk-in lerp, slot position, rotation)
+    // while the inner clone holds the auto-fit scale/offset. Without this, spawnChar's
+    // `mesh.position.set(...)` would clobber the feet-on-floor offset.
+    const inner = cloneSkinnedModel(droppedGLB.scene);
+    inner.scale.setScalar(glbNormScale);
+    inner.position.copy(glbNormOffset);
+
+    const wrapper = new THREE.Group();
+    wrapper.add(inner);
+
+    const mixer = new THREE.AnimationMixer(inner);
+    return { mesh: wrapper, mixer, clips: droppedGLB.animations, isPrim: false };
   }
   return { mesh: createPrimitive(slot), mixer: null, clips: [], isPrim: true };
 }
