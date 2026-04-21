@@ -296,7 +296,7 @@
 
   <div class="cg">
     <p class="hint">
-      Placeholder figures are used until you drop a real .glb.<br><br>
+      If <strong>.glb</strong> sits next to this HTML, it loads automatically; otherwise drop a .glb on the canvas.<br><br>
       Your .glb animation clips should be named:<br>
       <strong>Walk</strong>, <strong>Idle</strong>, <strong>Celebrate</strong>
     </p>
@@ -466,7 +466,19 @@ function createPrimitive(slot) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const loader   = new GLTFLoader();
-let droppedGLB = null; // set when user drops a .glb file
+let droppedGLB = null; // set from default file or user drop
+
+/** Same folder as this page — your test export */
+const DEFAULT_GLB_URL = new URL('.glb', import.meta.url).href;
+
+function applyLoadedGLB(gltf, displayName) {
+  droppedGLB = gltf;
+  const clipNames = gltf.animations.map(a => a.name).join(', ') || 'none';
+  log(`Loaded "${displayName}" — ${gltf.animations.length} clips: ${clipNames}`, 'ok');
+  const dropEl = document.getElementById('drop-zone');
+  dropEl.textContent = `✓ ${displayName} ready — trigger a walk-in`;
+  dropEl.classList.add('loaded');
+}
 
 function findClip(clips, name) {
   if (!clips.length) return null;
@@ -775,18 +787,21 @@ wrap.addEventListener('drop', e => {
   const url = URL.createObjectURL(file);
   log(`Loading ${file.name}…`, 'info');
 
-  loader.load(url, gltf => {
-    droppedGLB = gltf;
-    const clipNames = gltf.animations.map(a => a.name).join(', ') || 'none';
-    log(`Loaded "${file.name}" — ${gltf.animations.length} clips: ${clipNames}`, 'ok');
-    dropEl.textContent = `✓ ${file.name} ready — trigger a walk-in`;
-    dropEl.classList.add('loaded');
-  }, undefined, err => {
+  loader.load(url, gltf => applyLoadedGLB(gltf, file.name), undefined, err => {
     log(`GLB load error: ${err.message}`, 'warn');
   });
 });
 
-log('Three.js ready — placeholder characters active', 'ok');
+loader.load(
+  DEFAULT_GLB_URL,
+  gltf => applyLoadedGLB(gltf, '.glb'),
+  undefined,
+  () => {
+    log('No .glb next to this page — placeholder figures, or drop a .glb to load', 'info');
+  }
+);
+
+log('Three.js ready', 'ok');
 log('Hit "Full Podium" to test the sequence', 'info');
 </script>
 </body>
