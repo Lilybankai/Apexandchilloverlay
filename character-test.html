@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Character Test — Apex &amp; Chill Overlay</title>
+<script type="importmap">
+{
+  "imports": {
+    "three":          "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #07080d;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Canvas area ── */
+  #canvas-wrap {
+    position: relative;
+    flex: 1;
+    background: #0a0d14;
+    overflow: hidden;
+    border-right: 1px solid #1a2030;
+  }
+
+  #three-canvas { display: block; width: 100%; height: 100%; }
+
+  /* ── HTML label overlays ── */
+  #character-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .char-label {
+    position: absolute;
+    text-align: center;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.8));
+  }
+  .char-label.show { opacity: 1; }
+  .char-label .pos-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #60a5fa;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .char-label .drv-name {
+    font-family: 'Courier New', monospace;
+    font-size: 17px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .char-label .drv-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 2px;
+    letter-spacing: 1px;
+  }
+  .char-label .drv-pts {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #fbbf24;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  /* P1 is bigger and gold */
+  .char-label.p1 .drv-name {
+    font-size: 22px;
+    color: #fef3c7;
+    text-shadow: 0 0 20px rgba(251,191,36,0.7);
+  }
+  .char-label.p1 .pos-badge { color: #fbbf24; font-size: 13px; }
+
+  /* ── Round title overlay ── */
+  #round-info {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  #round-info.show { opacity: 1; }
+  #round-info .r-title {
+    font-family: 'Courier New', monospace;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 5px;
+    color: #60a5fa;
+    text-transform: uppercase;
+    text-shadow: 0 0 40px rgba(96,165,250,0.5);
+  }
+  #round-info .r-sub {
+    font-size: 12px;
+    color: #475569;
+    letter-spacing: 3px;
+    margin-top: 3px;
+    text-transform: uppercase;
+  }
+
+  /* ── Drop zone ── */
+  #drop-zone {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 1px dashed #1e3050;
+    border-radius: 8px;
+    padding: 8px 22px;
+    font-size: 12px;
+    color: #334155;
+    background: rgba(0,0,0,0.5);
+    cursor: default;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  #drop-zone.drag-over {
+    border-color: #3b82f6;
+    color: #60a5fa;
+    background: rgba(59,130,246,0.06);
+  }
+  #drop-zone.loaded {
+    border-color: #166534;
+    color: #22c55e;
+  }
+
+  /* ── Side controls ── */
+  #controls {
+    width: 270px;
+    min-width: 270px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 16px;
+    overflow-y: auto;
+    background: #07080d;
+  }
+
+  #controls h2 {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #3b82f6;
+    text-transform: uppercase;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #111827;
+  }
+
+  .cg { display: flex; flex-direction: column; gap: 6px; }
+  .cg-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: #374151;
+    text-transform: uppercase;
+  }
+
+  input[type="text"] {
+    background: #0d1117;
+    border: 1px solid #1f2937;
+    color: #d1d5db;
+    padding: 5px 9px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-family: inherit;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus { outline: none; border-color: #3b82f6; }
+
+  .btn {
+    background: #111827;
+    border: 1px solid #1f2937;
+    color: #d1d5db;
+    padding: 8px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    text-align: left;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .btn:hover { background: #1a2535; border-color: #3b82f6; color: #93c5fd; }
+  .btn.primary { background: #1e3a8a; border-color: #2563eb; color: #bfdbfe; }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn.gold { border-color: #78350f; color: #fbbf24; }
+  .btn.gold:hover { background: #1c1000; border-color: #d97706; }
+  .btn.danger { border-color: #7f1d1d; color: #f87171; }
+  .btn.danger:hover { background: #1a0000; border-color: #ef4444; }
+
+  .hint {
+    font-size: 10px;
+    color: #1f2937;
+    line-height: 1.5;
+  }
+  .hint strong { color: #374151; }
+
+  /* ── Log ── */
+  #log {
+    background: #050710;
+    border: 1px solid #111827;
+    border-radius: 6px;
+    padding: 8px 10px;
+    height: 130px;
+    overflow-y: auto;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    flex-shrink: 0;
+  }
+  #log .e { padding: 1px 0; color: #374151; }
+  #log .e.ok   { color: #16a34a; }
+  #log .e.warn { color: #ca8a04; }
+  #log .e.info { color: #2563eb; }
+
+  hr { border: none; border-top: 1px solid #111827; }
+</style>
+</head>
+<body>
+
+<!-- ── Canvas area ── -->
+<div id="canvas-wrap">
+  <canvas id="three-canvas"></canvas>
+  <div id="character-labels"></div>
+  <div id="round-info">
+    <div class="r-title" id="round-title">Round 1 — Monza</div>
+    <div class="r-sub"   id="round-sub">Race Result · LMGT3 Season 1</div>
+  </div>
+  <div id="drop-zone">▼ Drop a .glb file here to test your own model</div>
+</div>
+
+<!-- ── Controls panel ── -->
+<div id="controls">
+  <h2>Character Test</h2>
+
+  <div class="cg">
+    <div class="cg-label">Driver names (labels)</div>
+    <input id="name-p1" type="text" value="Lewis Hamilton"  placeholder="P1 name">
+    <input id="name-p2" type="text" value="Max Verstappen"  placeholder="P2 name">
+    <input id="name-p3" type="text" value="Carlos Sainz"    placeholder="P3 name">
+  </div>
+
+  <div class="cg">
+    <div class="cg-label">Round info</div>
+    <input id="inp-round" type="text" value="Round 1 — Monza"         placeholder="Round title">
+    <input id="inp-sub"   type="text" value="Race Result · LMGT3 Season 1" placeholder="Subtitle">
+  </div>
+
+  <hr>
+
+  <div class="cg">
+    <div class="cg-label">Full sequence</div>
+    <button class="btn primary" onclick="triggerFullPodium()">▶ Full Podium (auto-timed)</button>
+    <p class="hint">P3 at 1.2s · P2 at 2.2s · P1 at 3.4s</p>
+  </div>
+
+  <div class="cg">
+    <div class="cg-label">Individual walk-ins</div>
+    <button class="btn" onclick="walkIn('p3')">Walk in P3 — 3rd Place</button>
+    <button class="btn" onclick="walkIn('p2')">Walk in P2 — 2nd Place</button>
+    <button class="btn" onclick="walkIn('p1')">Walk in P1 — 1st + Celebrate</button>
+  </div>
+
+  <div class="cg">
+    <div class="cg-label">Special</div>
+    <button class="btn gold"   onclick="triggerChampion()">★ Champion Reveal</button>
+    <button class="btn danger" onclick="clearAll()">✕ Clear Scene</button>
+  </div>
+
+  <hr>
+
+  <div class="cg">
+    <div class="cg-label">Status log</div>
+    <div id="log"></div>
+  </div>
+
+  <div class="cg">
+    <p class="hint">
+      Placeholder figures are used until you drop a real .glb.<br><br>
+      Your .glb animation clips should be named:<br>
+      <strong>Walk</strong>, <strong>Idle</strong>, <strong>Celebrate</strong>
+    </p>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scene
+// ─────────────────────────────────────────────────────────────────────────────
+
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
+camera.position.set(0, 0.9, 5.8);
+camera.lookAt(0, 0.6, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 1.3);
+key.position.set(3, 6, 4);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x4a8fff, 0.45);
+fill.position.set(-4, 2, 2);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0x0033ff, 0.3);
+rim.position.set(0, -1, -4);
+scene.add(rim);
+
+// Subtle floor line
+const floorMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(14, 0.015),
+  new THREE.MeshBasicMaterial({ color: 0x1e3a5f, transparent: true, opacity: 0.7 })
+);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.position.y = 0.001;
+scene.add(floorMesh);
+
+// Stage position markers (faint glow dots)
+for (const [x, col] of [[-2.4, 0x1a3a6a], [0, 0x3a2a00], [2.4, 0x1a3a6a]]) {
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.25, 32),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35 })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(x, 0.002, 0);
+  scene.add(dot);
+}
+
+function onResize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Podium slot config
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SLOTS = {
+  p1: { x: 0,    y: 0, z: 0,     entryX: 0,  entryY: 5,  fromTop: true,  celebrate: true  },
+  p2: { x: -2.4, y: 0, z: -0.15, entryX: -9, entryY: 0,  fromTop: false, celebrate: false },
+  p3: { x:  2.4, y: 0, z: -0.15, entryX:  9, entryY: 0,  fromTop: false, celebrate: false },
+};
+
+const WALK_SECS = 1.4;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Primitive placeholder character
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SLOT_COLORS = {
+  p1: { suit: 0x1255cc, dark: 0x08111f, visor: 0x88aaee },
+  p2: { suit: 0x283444, dark: 0x0c0f14, visor: 0x667788 },
+  p3: { suit: 0x193452, dark: 0x0c0f14, visor: 0x557799 },
+};
+
+function mat(color, rough = 0.75, metal = 0) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+}
+
+function box(w, h, d, m) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); }
+
+function makeHingedLimb(upper, lower, m) {
+  // Returns a group; pivot is at top of upper limb
+  const grp = new THREE.Group();
+  const uMesh = box(...upper, m);
+  uMesh.position.y = -upper[1] / 2;
+  grp.add(uMesh);
+  const knee = new THREE.Group();
+  knee.position.y = -upper[1];
+  const lMesh = box(...lower, m);
+  lMesh.position.y = -lower[1] / 2;
+  knee.add(lMesh);
+  grp.add(knee);
+  grp._knee = knee;
+  return grp;
+}
+
+function createPrimitive(slot) {
+  const col = SLOT_COLORS[slot] || SLOT_COLORS.p2;
+  const suitM  = mat(col.suit, 0.72);
+  const darkM  = mat(col.dark, 0.85);
+  const helmM  = mat(0xb0b8c8, 0.25, 0.55);
+  const visorM = mat(col.visor, 0.1, 0.4);
+
+  const root = new THREE.Group();
+
+  // Head / helmet
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 12), helmM);
+  head.position.y = 1.68;
+  head.scale.set(1, 1.08, 1);
+
+  const visor = box(0.18, 0.07, 0.06, visorM);
+  visor.position.set(0, 1.665, 0.13);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), suitM);
+  neck.position.y = 1.5;
+
+  // Torso
+  const torso = box(0.38, 0.5, 0.2, suitM);
+  torso.position.y = 1.17;
+
+  // Hips
+  const hips = box(0.36, 0.17, 0.19, darkM);
+  hips.position.y = 0.89;
+
+  // Legs (pivot at hip-joint)
+  const legL = makeHingedLimb([0.135, 0.46, 0.14], [0.12, 0.44, 0.13], darkM);
+  legL.position.set(-0.11, 0.88, 0);
+  const footL = box(0.13, 0.07, 0.24, darkM);
+  footL.position.set(0, -0.07, 0.06);
+  legL._knee.add(footL);
+
+  const legR = legL.clone();
+  legR.position.x = 0.11;
+
+  // Arms (pivot at shoulder)
+  const armL = makeHingedLimb([0.105, 0.38, 0.11], [0.09, 0.35, 0.1], suitM);
+  armL.position.set(-0.235, 1.38, 0);
+
+  const armR = armL.clone();
+  armR.position.x = 0.235;
+
+  root.add(head, visor, neck, torso, hips, legL, legR, armL, armR);
+
+  root._parts  = { head, torso, legL, legR, armL, armR };
+  root._animT  = 0;
+  root._isPrim = true;
+  return root;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLB drop support
+// ─────────────────────────────────────────────────────────────────────────────
+
+const loader   = new GLTFLoader();
+let droppedGLB = null; // set when user drops a .glb file
+
+function findClip(clips, name) {
+  if (!clips.length) return null;
+  return clips.find(c => c.name.toLowerCase() === name.toLowerCase())
+      || clips.find(c => c.name.toLowerCase().includes(name.toLowerCase()))
+      || clips[0];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Character slot state
+// ─────────────────────────────────────────────────────────────────────────────
+
+const chars = { p1: null, p2: null, p3: null };
+
+function buildChar(slot) {
+  if (droppedGLB) {
+    const mesh  = SkeletonUtils.clone(droppedGLB.scene);
+    const mixer = new THREE.AnimationMixer(mesh);
+    return { mesh, mixer, clips: droppedGLB.animations, isPrim: false };
+  }
+  return { mesh: createPrimitive(slot), mixer: null, clips: [], isPrim: true };
+}
+
+function spawnChar(slot, driver) {
+  // Clear existing
+  if (chars[slot]) {
+    scene.remove(chars[slot].mesh);
+    chars[slot].mixer?.stopAllAction();
+    chars[slot].labelEl?.remove();
+  }
+
+  const cfg = SLOTS[slot];
+  const { mesh, mixer, clips, isPrim } = buildChar(slot);
+
+  // Scale
+  if (isPrim) mesh.scale.setScalar(slot === 'p1' ? 1.0 : 0.88);
+
+  // Start position (off-screen)
+  mesh.position.set(
+    cfg.fromTop ? cfg.x      : cfg.entryX,
+    cfg.fromTop ? cfg.entryY : 0,
+    cfg.z
+  );
+  // Side chars turn slightly toward center
+  if (slot === 'p2') mesh.rotation.y =  0.18;
+  if (slot === 'p3') mesh.rotation.y = -0.18;
+
+  scene.add(mesh);
+
+  const c = {
+    slot, mesh, mixer, clips, isPrim,
+    driver,
+    state:    'walking',
+    walkProg: 0,
+    targetX:  cfg.x,
+    targetY:  0,
+    fromTop:  cfg.fromTop,
+    celebrate: cfg.celebrate,
+    labelEl:  null,
+  };
+  chars[slot] = c;
+
+  // Start GLB walk animation
+  if (mixer && clips.length) {
+    const action = mixer.clipAction(findClip(clips, 'walk'));
+    if (action) action.play();
+  }
+
+  log(`${slot.toUpperCase()}: "${driver.name}" walking in`, 'info');
+}
+
+function onArrival(slot) {
+  const c = chars[slot];
+  if (!c) return;
+
+  c.state = c.celebrate ? 'celebrate' : 'idle';
+  c.mesh.position.set(c.targetX, c.targetY, SLOTS[slot].z);
+
+  // Switch GLB animation
+  if (c.mixer && c.clips.length) {
+    c.mixer.stopAllAction();
+    const clip = findClip(c.clips, c.state);
+    if (clip) c.mixer.clipAction(clip).reset().play();
+  }
+
+  spawnLabel(slot, c.driver);
+  log(`${slot.toUpperCase()}: ${c.celebrate ? 'celebrating' : 'idle'}`, 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTML labels
+// ─────────────────────────────────────────────────────────────────────────────
+
+const POS_LABELS = { p1: '1ST PLACE', p2: '2ND PLACE', p3: '3RD PLACE' };
+
+function spawnLabel(slot, driver) {
+  const c = chars[slot];
+  if (!c) return;
+
+  const wrap = document.getElementById('character-labels');
+  const el   = document.createElement('div');
+  el.className = `char-label ${slot}`;
+  el.innerHTML  = `
+    <div class="pos-badge">${POS_LABELS[slot]}</div>
+    <div class="drv-name">${driver.name}</div>
+    <div class="drv-sub">${driver.car}</div>
+    <div class="drv-pts">${driver.pts}</div>
+  `;
+  wrap.appendChild(el);
+  c.labelEl = el;
+
+  positionLabel(c);
+  requestAnimationFrame(() => el.classList.add('show'));
+}
+
+function positionLabel(c) {
+  if (!c?.labelEl || c.state === 'walking') return;
+
+  // Project character's world position onto screen
+  const wp  = new THREE.Vector3();
+  c.mesh.getWorldPosition(wp);
+  wp.y = -0.05; // near foot level
+
+  const ndc = wp.clone().project(camera);
+  const cw  = canvas.clientWidth;
+  const ch  = canvas.clientHeight;
+
+  c.labelEl.style.left = `${(ndc.x * 0.5 + 0.5) * cw}px`;
+  c.labelEl.style.top  = `${(-(ndc.y * 0.5) + 0.5) * ch + 8}px`;
+}
+
+function clearLabels() {
+  document.getElementById('character-labels').innerHTML = '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render loop
+// ─────────────────────────────────────────────────────────────────────────────
+
+let prevT = 0;
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min((now - prevT) / 1000, 0.1);
+  prevT = now;
+
+  for (const slot of ['p1', 'p2', 'p3']) {
+    const c = chars[slot];
+    if (!c) continue;
+
+    // ── Walk-in lerp ──
+    if (c.state === 'walking') {
+      c.walkProg += dt / WALK_SECS;
+      const t    = Math.min(c.walkProg, 1);
+      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+
+      if (c.fromTop) {
+        c.mesh.position.y = SLOTS[slot].entryY * (1 - ease);
+      } else {
+        const sx = SLOTS[slot].entryX;
+        c.mesh.position.x = sx + (c.targetX - sx) * ease;
+      }
+
+      if (t >= 1) onArrival(slot);
+    }
+
+    // ── Primitive animations ──
+    if (c.isPrim) {
+      c.mesh._animT += dt;
+      const t = c.mesh._animT;
+      const p = c.mesh._parts;
+
+      if (c.state === 'walking') {
+        const s = Math.sin(t * 7.5);
+        p.legL.rotation.x =  s * 0.52;
+        p.legR.rotation.x = -s * 0.52;
+        p.armL.rotation.x = -s * 0.38;
+        p.armR.rotation.x =  s * 0.38;
+        p.torso.rotation.z = s * 0.025;
+
+      } else if (c.state === 'idle') {
+        // Gentle breathing
+        const bob = Math.sin(t * 1.6) * 0.007;
+        c.mesh.position.y = c.targetY + bob;
+        p.legL.rotation.x = 0;
+        p.legR.rotation.x = 0;
+        p.armL.rotation.x = 0;
+        p.armR.rotation.x = 0;
+        p.torso.rotation.z = 0;
+
+      } else if (c.state === 'celebrate') {
+        const s    = Math.sin(t * 5.5);
+        const jump = Math.abs(Math.sin(t * 3.8)) * 0.14;
+        c.mesh.position.y = c.targetY + jump;
+        p.armL.rotation.x = -(Math.PI * 0.62) + s * 0.22;
+        p.armR.rotation.x = -(Math.PI * 0.62) - s * 0.22;
+        p.armL.rotation.z = -0.28;
+        p.armR.rotation.z =  0.28;
+        p.legL.rotation.x =  s * 0.12;
+        p.legR.rotation.x = -s * 0.12;
+        p.torso.rotation.z = s * 0.05;
+      }
+    }
+
+    // GLB mixer
+    c.mixer?.update(dt);
+
+    // Update label every frame
+    positionLabel(c);
+  }
+
+  renderer.render(scene, camera);
+}
+
+requestAnimationFrame(animate);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public controls (called by onclick)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function driverData(slot) {
+  const pts = { p1: '25 pts', p2: '18 pts', p3: '15 pts' };
+  return {
+    name: document.getElementById(`name-${slot}`).value.trim() || 'Driver',
+    car:  'APEX Racing · Car #33',
+    pts:  pts[slot],
+  };
+}
+
+function updateRoundInfo() {
+  document.getElementById('round-title').textContent =
+    document.getElementById('inp-round').value || 'Round 1 — Monza';
+  document.getElementById('round-sub').textContent =
+    document.getElementById('inp-sub').value   || 'Race Result · LMGT3 Season 1';
+}
+
+window.clearAll = function () {
+  for (const slot of ['p1', 'p2', 'p3']) {
+    if (chars[slot]) {
+      scene.remove(chars[slot].mesh);
+      chars[slot].mixer?.stopAllAction();
+      chars[slot].labelEl?.remove();
+      chars[slot] = null;
+    }
+  }
+  clearLabels();
+  document.getElementById('round-info').classList.remove('show');
+  log('Scene cleared', 'warn');
+};
+
+window.walkIn = function (slot) {
+  spawnChar(slot, driverData(slot));
+};
+
+window.triggerFullPodium = function () {
+  clearAll();
+  updateRoundInfo();
+  setTimeout(() => document.getElementById('round-info').classList.add('show'), 80);
+  setTimeout(() => spawnChar('p3', driverData('p3')), 1200);
+  setTimeout(() => spawnChar('p2', driverData('p2')), 2200);
+  setTimeout(() => spawnChar('p1', driverData('p1')), 3400);
+  log('Full podium sequence started…', 'info');
+};
+
+window.triggerChampion = function () {
+  clearAll();
+  document.getElementById('inp-round').value = 'CHAMPION';
+  document.getElementById('inp-sub').value   = 'Season 1 · LMGT3 Class';
+  updateRoundInfo();
+  const data = driverData('p1');
+  data.pts = '★ SEASON CHAMPION';
+  setTimeout(() => document.getElementById('round-info').classList.add('show'), 80);
+  setTimeout(() => spawnChar('p1', data), 900);
+  log('Champion reveal triggered', 'info');
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status log
+// ─────────────────────────────────────────────────────────────────────────────
+
+function log(msg, type = 'info') {
+  const el    = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = `e ${type}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(entry);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLB drag-and-drop
+// ─────────────────────────────────────────────────────────────────────────────
+
+const dropEl = document.getElementById('drop-zone');
+const wrap   = document.getElementById('canvas-wrap');
+
+wrap.addEventListener('dragover',  e => { e.preventDefault(); dropEl.classList.add('drag-over'); });
+wrap.addEventListener('dragleave', ()  => dropEl.classList.remove('drag-over'));
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  dropEl.classList.remove('drag-over');
+
+  const file = e.dataTransfer.files[0];
+  if (!file?.name.endsWith('.glb')) { log('Drop a .glb file', 'warn'); return; }
+
+  const url = URL.createObjectURL(file);
+  log(`Loading ${file.name}…`, 'info');
+
+  loader.load(url, gltf => {
+    droppedGLB = gltf;
+    const clipNames = gltf.animations.map(a => a.name).join(', ') || 'none';
+    log(`Loaded "${file.name}" — ${gltf.animations.length} clips: ${clipNames}`, 'ok');
+    dropEl.textContent = `✓ ${file.name} ready — trigger a walk-in`;
+    dropEl.classList.add('loaded');
+  }, undefined, err => {
+    log(`GLB load error: ${err.message}`, 'warn');
+  });
+});
+
+log('Three.js ready — placeholder characters active', 'ok');
+log('Hit "Full Podium" to test the sequence', 'info');
+</script>
+</body>
+</html>
