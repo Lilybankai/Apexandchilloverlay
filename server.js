@@ -55,7 +55,7 @@ let multistreamState = {
   layout: 'grid',                         // 'grid' | 'pip'
   rotationEnabled: false,
   rotationIntervalSec: 30,
-  twitchParent: 'localhost',
+  twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
 };
 
 async function simgridFetch(pathname) {
