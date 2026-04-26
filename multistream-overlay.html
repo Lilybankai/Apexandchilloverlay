@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Stream Overlay — Apex &amp; Chill</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --blue: #20c9ff;
+      --navy: #142f69;
+      --orange: #ff8a00;
+      --panel: rgba(4, 10, 24, 0.96);
+      --text: #edf4ff;
+      --dim: #88a0c9;
+      --border: rgba(255, 255, 255, 0.09);
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Rajdhani', Arial, sans-serif;
+    }
+
+    #multistream-overlay {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      background: #050510;
+      overflow: hidden;
+    }
+
+    /* ── GRID LAYOUT (2×2 equal) ─────────────────────────────────────────────── */
+    #multistream-overlay[data-layout='grid'] #stream-grid {
+      display: grid;
+      grid-template-columns: 960px 960px;
+      grid-template-rows: 540px 540px;
+      width: 1920px;
+      height: 1080px;
+      gap: 0;
+    }
+
+    #multistream-overlay[data-layout='grid'] .stream-cell {
+      position: relative;
+      width: 960px;
+      height: 540px;
+      overflow: hidden;
+      background: #060614;
+    }
+
+    /* ── PiP LAYOUT (focused large left, 3 small right) ─────────────────────── */
+    #multistream-overlay[data-layout='pip'] #stream-grid {
+      display: grid;
+      grid-template-columns: 1280px 640px;
+      grid-template-rows: 360px 360px 360px;
+      width: 1920px;
+      height: 1080px;
+      gap: 0;
+    }
+
+    /* Focused cell spans all 3 rows in the left column */
+    #multistream-overlay[data-layout='pip'] .stream-cell {
+      position: relative;
+      overflow: hidden;
+      background: #060614;
+    }
+
+    #multistream-overlay[data-layout='pip'] .stream-cell.focused {
+      grid-column: 1;
+      grid-row: 1 / 4;
+      width: 1280px;
+      height: 1080px;
+    }
+
+    /* Non-focused cells go in the right column (auto-placed) */
+    #multistream-overlay[data-layout='pip'] .stream-cell:not(.focused) {
+      grid-column: 2;
+      width: 640px;
+      height: 360px;
+    }
+
+    /* ── COMMON CELL STYLES ──────────────────────────────────────────────────── */
+    .stream-cell iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Focus glow border */
+    .stream-cell.focused::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 3px solid var(--blue);
+      box-shadow: inset 0 0 24px rgba(32, 201, 255, 0.2), 0 0 12px rgba(32, 201, 255, 0.3);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Divider lines between cells in grid mode */
+    #multistream-overlay[data-layout='grid'] .stream-cell {
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    #multistream-overlay[data-layout='pip'] .stream-cell:not(.focused) {
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Stream label */
+    .stream-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 6px 12px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* Audio badge */
+    .audio-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--blue);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 15;
+      box-shadow: 0 0 12px rgba(32, 201, 255, 0.6);
+    }
+
+    .audio-badge svg {
+      width: 14px;
+      height: 14px;
+      fill: #000;
+    }
+
+    /* Empty cell placeholder */
+    .stream-cell.empty {
+      background: #06060f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stream-cell.empty::before {
+      content: '';
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(255, 255, 255, 0.07);
+      border-radius: 50%;
+    }
+
+    /* Slot index corner label (subtle, for debugging / OBS setup) */
+    .slot-index {
+      position: absolute;
+      top: 6px;
+      left: 10px;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.12);
+      letter-spacing: 2px;
+      z-index: 5;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="multistream-overlay" data-layout="grid">
+    <div id="stream-grid">
+      <div class="stream-cell empty" id="cell-0">
+        <span class="slot-index">01</span>
+        <div class="audio-badge">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        </div>
+        <div class="stream-label"></div>
+      </div>
+      <div class="stream-cell empty" id="cell-1">
+        <span class="slot-index">02</span>
+        <div class="audio-badge">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        </div>
+        <div class="stream-label"></div>
+      </div>
+      <div class="stream-cell empty" id="cell-2">
+        <span class="slot-index">03</span>
+        <div class="audio-badge">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        </div>
+        <div class="stream-label"></div>
+      </div>
+      <div class="stream-cell empty" id="cell-3">
+        <span class="slot-index">04</span>
+        <div class="audio-badge">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        </div>
+        <div class="stream-label"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/scripts/multistream/overlay.js"></script>
+</body>
+</html>

@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Stream Controls — Apex &amp; Chill</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --cyan: #00d4ff;
+      --purple: #b400ff;
+      --green: #00ff88;
+      --orange: #ff8a00;
+      --red: #ff4466;
+      --bg: #06060f;
+      --surface: #0d0d22;
+      --surface2: #111128;
+      --border: rgba(255,255,255,0.07);
+      --text: #eaeaf5;
+      --dim: #556688;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 24px;
+    }
+    .panel {
+      width: 600px;
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid rgba(0,212,255,0.18);
+      box-shadow: 0 0 60px rgba(0,180,255,0.06);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(90deg, rgba(0,212,255,0.06), rgba(180,0,255,0.04));
+    }
+    .panel-title { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; }
+    .panel-sub { font-size: 11px; color: var(--dim); letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+    .conn-wrap { display: flex; align-items: center; gap: 8px; font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+    .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #333; transition: background 0.3s, box-shadow 0.3s; }
+    .conn-wrap.online .conn-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .conn-wrap.online .conn-label { color: var(--green); }
+
+    .section { padding: 20px 28px; border-bottom: 1px solid var(--border); }
+    .section-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--dim);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-count { font-size: 11px; color: var(--dim); }
+
+    /* ── Layout toggle ── */
+    .layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .layout-btn {
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .layout-btn:hover { border-color: rgba(0,212,255,0.3); }
+    .layout-btn.active { border-color: rgba(0,212,255,0.6); color: var(--cyan); background: rgba(0,212,255,0.08); }
+    .layout-btn .layout-icon { font-size: 20px; display: block; margin-bottom: 6px; }
+
+    /* ── Add stream ── */
+    .add-row { display: flex; gap: 10px; }
+    .url-input {
+      flex: 1;
+      padding: 13px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    .url-input::placeholder { color: var(--dim); }
+    .url-input:focus { outline: none; border-color: rgba(0,212,255,0.4); }
+    .url-input.error { border-color: rgba(255, 68, 102, 0.6); }
+    .add-btn {
+      padding: 13px 20px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,212,255,0.4);
+      background: rgba(0,212,255,0.08);
+      color: var(--cyan);
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .add-btn:hover { background: rgba(0,212,255,0.16); }
+    .add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .url-hint { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 16px; }
+    .url-hint.err { color: var(--red); }
+    .url-hint.ok { color: var(--green); }
+
+    /* ── Stream list ── */
+    #stream-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .stream-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+      border-radius: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .stream-badge {
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      letter-spacing: 1px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .stream-badge.youtube { background: rgba(255,0,0,0.15); color: #ff4444; border: 1px solid rgba(255,0,0,0.25); }
+    .stream-badge.twitch  { background: rgba(145,70,255,0.15); color: #9146ff; border: 1px solid rgba(145,70,255,0.25); }
+    .stream-label-text { flex: 1; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stream-visible-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+      display: none;
+    }
+    .stream-visible-dot.visible { display: block; }
+    .stream-remove-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,68,102,0.3);
+      background: rgba(255,68,102,0.06);
+      color: var(--red);
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .stream-remove-btn:hover { background: rgba(255,68,102,0.15); }
+    .no-streams { color: var(--dim); font-size: 13px; text-align: center; padding: 16px 0; }
+
+    /* ── Visible slots / focus ── */
+    .slots-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .slot-card {
+      padding: 14px;
+      border-radius: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      position: relative;
+    }
+    .slot-card-num {
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      color: var(--dim);
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+    .slot-card-name { font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 10px; min-height: 18px; }
+    .slot-focus-btn {
+      width: 100%;
+      padding: 9px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--dim);
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .slot-focus-btn:hover:not(:disabled) { border-color: rgba(0,212,255,0.3); color: var(--cyan); }
+    .slot-focus-btn.active { border-color: rgba(0,212,255,0.6); color: var(--cyan); background: rgba(0,212,255,0.1); }
+    .slot-focus-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Rotation ── */
+    .rotation-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .rotation-toggle {
+      flex: 1;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--dim);
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .rotation-toggle.active { border-color: rgba(0,255,136,0.5); color: var(--green); background: rgba(0,255,136,0.07); }
+    .rotate-now-btn {
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,138,0,0.35);
+      background: rgba(255,138,0,0.07);
+      color: var(--orange);
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .rotate-now-btn:hover { background: rgba(255,138,0,0.14); }
+    .rotate-now-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .interval-row { display: flex; align-items: center; gap: 12px; }
+    .interval-label { font-size: 13px; color: var(--dim); flex: 1; }
+    .interval-input {
+      width: 80px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Orbitron', monospace;
+      font-size: 13px;
+      text-align: center;
+    }
+    .interval-input:focus { outline: none; border-color: rgba(0,212,255,0.4); }
+    .interval-unit { font-size: 12px; color: var(--dim); }
+
+    /* ── Advanced (Twitch parent) ── */
+    .advanced-toggle {
+      background: none;
+      border: none;
+      color: var(--dim);
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 0;
+    }
+    .advanced-toggle:hover { color: var(--text); }
+    #advanced-section { display: none; margin-top: 14px; }
+    #advanced-section.open { display: block; }
+    .twitch-row { display: flex; gap: 10px; align-items: center; }
+    .twitch-input {
+      flex: 1;
+      padding: 11px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+    }
+    .twitch-input:focus { outline: none; border-color: rgba(0,212,255,0.4); }
+    .twitch-save-btn {
+      padding: 11px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(145,70,255,0.35);
+      background: rgba(145,70,255,0.07);
+      color: #9146ff;
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .twitch-save-btn:hover { background: rgba(145,70,255,0.15); }
+    .twitch-hint { font-size: 12px; color: var(--dim); margin-top: 8px; }
+
+    /* ── Shortcuts ── */
+    .shortcuts { padding: 16px 28px 20px; }
+    .shortcuts-title { font-family: 'Orbitron', monospace; font-size: 10px; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 10px; }
+    .shortcut-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    kbd { min-width: 32px; height: 24px; padding: 0 8px; border-radius: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); font-family: 'Orbitron', monospace; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .key-label { font-size: 13px; color: var(--dim); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <!-- Header -->
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Multi Stream</div>
+        <div class="panel-sub">Live Stream Grid</div>
+      </div>
+      <div class="conn-wrap" id="conn">
+        <div class="conn-dot"></div>
+        <span class="conn-label">Offline</span>
+      </div>
+    </div>
+
+    <!-- Layout -->
+    <div class="section">
+      <div class="section-label">Layout</div>
+      <div class="layout-grid">
+        <button class="layout-btn active" id="btn-layout-grid" onclick="setLayout('grid')">
+          <span class="layout-icon">⊞</span>
+          Grid
+        </button>
+        <button class="layout-btn" id="btn-layout-pip" onclick="setLayout('pip')">
+          <span class="layout-icon">▣</span>
+          PiP
+        </button>
+      </div>
+    </div>
+
+    <!-- Streams -->
+    <div class="section">
+      <div class="section-label">
+        <span>Live Streams</span>
+        <span class="section-count" id="stream-count">0 / 8</span>
+      </div>
+      <div class="add-row">
+        <input class="url-input" id="url-input" type="text" placeholder="YouTube or Twitch URL…" autocomplete="off" spellcheck="false">
+        <button class="add-btn" id="add-btn" onclick="addStream()">Add</button>
+      </div>
+      <div class="url-hint" id="url-hint"></div>
+      <div id="stream-list"></div>
+    </div>
+
+    <!-- Visible Slots / Focus -->
+    <div class="section">
+      <div class="section-label">Visible Slots — Click to Focus Audio</div>
+      <div class="slots-grid" id="slots-grid">
+        <div class="slot-card" id="slot-card-0">
+          <div class="slot-card-num">SLOT 01</div>
+          <div class="slot-card-name" id="slot-name-0">—</div>
+          <button class="slot-focus-btn" id="slot-focus-0" disabled onclick="focusSlot(0)">Focus Audio</button>
+        </div>
+        <div class="slot-card" id="slot-card-1">
+          <div class="slot-card-num">SLOT 02</div>
+          <div class="slot-card-name" id="slot-name-1">—</div>
+          <button class="slot-focus-btn" id="slot-focus-1" disabled onclick="focusSlot(1)">Focus Audio</button>
+        </div>
+        <div class="slot-card" id="slot-card-2">
+          <div class="slot-card-num">SLOT 03</div>
+          <div class="slot-card-name" id="slot-name-2">—</div>
+          <button class="slot-focus-btn" id="slot-focus-2" disabled onclick="focusSlot(2)">Focus Audio</button>
+        </div>
+        <div class="slot-card" id="slot-card-3">
+          <div class="slot-card-num">SLOT 04</div>
+          <div class="slot-card-name" id="slot-name-3">—</div>
+          <button class="slot-focus-btn" id="slot-focus-3" disabled onclick="focusSlot(3)">Focus Audio</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rotation -->
+    <div class="section">
+      <div class="section-label">Rotation</div>
+      <div class="rotation-row">
+        <button class="rotation-toggle" id="rotation-toggle" onclick="toggleRotation()">Rotation Off</button>
+        <button class="rotate-now-btn" id="rotate-now-btn" onclick="rotateNow()" disabled>Rotate Now</button>
+      </div>
+      <div class="interval-row">
+        <span class="interval-label">Rotate every</span>
+        <input class="interval-input" id="interval-input" type="number" min="5" max="600" value="30">
+        <span class="interval-unit">seconds</span>
+      </div>
+    </div>
+
+    <!-- Advanced -->
+    <div class="section">
+      <button class="advanced-toggle" onclick="toggleAdvanced()">⚙ Advanced ▾</button>
+      <div id="advanced-section">
+        <div class="twitch-hint">Twitch embeds require the <code>parent</code> domain to match where this page is served from. Default: <code>localhost</code>.</div>
+        <div class="twitch-row" style="margin-top:10px">
+          <input class="twitch-input" id="twitch-parent-input" type="text" placeholder="localhost" value="localhost">
+          <button class="twitch-save-btn" onclick="saveTwitchParent()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shortcuts -->
+    <div class="shortcuts">
+      <div class="shortcuts-title">Open in OBS</div>
+      <div class="shortcut-row"><span class="key-label">Overlay URL:</span> <code style="color:#20c9ff;font-size:12px;">http://localhost:3000/multistream-overlay.html</code></div>
+    </div>
+  </div>
+
+  <script>
+    let state = {
+      streams: [],
+      visibleSlots: [null, null, null, null],
+      focusedId: null,
+      layout: 'grid',
+      rotationEnabled: false,
+      rotationIntervalSec: 30,
+      twitchParent: 'localhost',
+    };
+    let rotationTimer = null;
+    let evtSource = null;
+
+    // ── API ───────────────────────────────────────────────────────────────────
+    async function cmd(command, args = {}) {
+      try {
+        const res = await fetch('/api/multistream/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cmd: command, ...args }),
+        });
+        const json = await res.json();
+        if (json.ok && json.multistream) {
+          applyState(json.multistream);
+        }
+        return json;
+      } catch (e) {
+        console.error('cmd error', e);
+        return { ok: false };
+      }
+    }
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+    async function addStream() {
+      const input = document.getElementById('url-input');
+      const hint = document.getElementById('url-hint');
+      const url = input.value.trim();
+      if (!url) return;
+
+      const res = await cmd('addStream', { url });
+      if (res.ok) {
+        input.value = '';
+        input.classList.remove('error');
+        hint.textContent = '';
+        hint.className = 'url-hint';
+      } else {
+        input.classList.add('error');
+        hint.textContent = res.error === 'max_streams'
+          ? 'Maximum 8 streams reached.'
+          : 'Unrecognised URL. Paste a YouTube watch/live link or a Twitch channel URL.';
+        hint.className = 'url-hint err';
+      }
+    }
+
+    async function removeStream(id) {
+      await cmd('removeStream', { id });
+    }
+
+    function focusSlot(slotIdx) {
+      const id = state.visibleSlots[slotIdx];
+      if (!id) return;
+      cmd('setFocus', { id });
+    }
+
+    function setLayout(layout) {
+      cmd('setLayout', { layout });
+    }
+
+    function toggleRotation() {
+      cmd('setRotation', { enabled: !state.rotationEnabled, intervalSec: state.rotationIntervalSec });
+    }
+
+    function rotateNow() {
+      cmd('rotateNow');
+    }
+
+    function saveTwitchParent() {
+      const parent = document.getElementById('twitch-parent-input').value.trim() || 'localhost';
+      cmd('setTwitchParent', { parent });
+    }
+
+    function toggleAdvanced() {
+      const el = document.getElementById('advanced-section');
+      el.classList.toggle('open');
+    }
+
+    // ── Rotation timer (controls page owns this) ──────────────────────────────
+    function resetRotationTimer() {
+      clearInterval(rotationTimer);
+      if (state.rotationEnabled && state.streams.length > 4) {
+        rotationTimer = setInterval(() => cmd('rotateNow'), state.rotationIntervalSec * 1000);
+      }
+    }
+
+    // ── State & render ────────────────────────────────────────────────────────
+    function applyState(newState) {
+      const rotationChanged =
+        state.rotationEnabled !== newState.rotationEnabled ||
+        state.rotationIntervalSec !== newState.rotationIntervalSec;
+      Object.assign(state, newState);
+      renderUI();
+      if (rotationChanged) resetRotationTimer();
+    }
+
+    function renderUI() {
+      renderLayout();
+      renderStreamList();
+      renderSlots();
+      renderRotation();
+      document.getElementById('twitch-parent-input').value = state.twitchParent || 'localhost';
+    }
+
+    function renderLayout() {
+      document.getElementById('btn-layout-grid').classList.toggle('active', state.layout === 'grid');
+      document.getElementById('btn-layout-pip').classList.toggle('active', state.layout === 'pip');
+    }
+
+    function renderStreamList() {
+      const count = document.getElementById('stream-count');
+      count.textContent = `${state.streams.length} / 8`;
+
+      const list = document.getElementById('stream-list');
+      if (state.streams.length === 0) {
+        list.innerHTML = '<div class="no-streams">No streams yet — add one above</div>';
+        return;
+      }
+
+      list.innerHTML = state.streams.map(stream => {
+        const isVisible = state.visibleSlots.includes(stream.id);
+        return `
+          <div class="stream-row" data-id="${stream.id}">
+            <span class="stream-badge ${stream.type}">${stream.type === 'youtube' ? 'YT' : 'TW'}</span>
+            <span class="stream-label-text" title="${stream.label}">${stream.label}</span>
+            <span class="stream-visible-dot ${isVisible ? 'visible' : ''}" title="In grid"></span>
+            <button class="stream-remove-btn" onclick="removeStream('${stream.id}')">Remove</button>
+          </div>`;
+      }).join('');
+    }
+
+    function renderSlots() {
+      for (let i = 0; i < 4; i++) {
+        const id = state.visibleSlots[i];
+        const stream = id ? state.streams.find(s => s.id === id) : null;
+        const nameEl = document.getElementById(`slot-name-${i}`);
+        const focusBtn = document.getElementById(`slot-focus-${i}`);
+
+        nameEl.textContent = stream ? stream.label : '—';
+        nameEl.style.color = stream ? 'var(--text)' : 'var(--dim)';
+
+        focusBtn.disabled = !stream;
+        focusBtn.classList.toggle('active', !!id && id === state.focusedId);
+      }
+    }
+
+    function renderRotation() {
+      const toggle = document.getElementById('rotation-toggle');
+      const rotateBtn = document.getElementById('rotate-now-btn');
+      const intervalInput = document.getElementById('interval-input');
+
+      toggle.textContent = state.rotationEnabled ? 'Rotation On' : 'Rotation Off';
+      toggle.classList.toggle('active', state.rotationEnabled);
+
+      const canRotate = state.streams.length > 4;
+      rotateBtn.disabled = !canRotate;
+      intervalInput.value = state.rotationIntervalSec;
+    }
+
+    // ── SSE ───────────────────────────────────────────────────────────────────
+    function connectSSE() {
+      if (evtSource) evtSource.close();
+      evtSource = new EventSource('/api/events');
+      evtSource.onopen = () => {
+        const conn = document.getElementById('conn');
+        conn.classList.add('online');
+        conn.querySelector('.conn-label').textContent = 'Online';
+      };
+      evtSource.onmessage = e => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'state' && msg.multistream) {
+            applyState(msg.multistream);
+          } else if (msg.type === 'msCommand') {
+            applyState(msg);
+          }
+        } catch (_) {}
+      };
+      evtSource.onerror = () => {
+        const conn = document.getElementById('conn');
+        conn.classList.remove('online');
+        conn.querySelector('.conn-label').textContent = 'Offline';
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    async function init() {
+      try {
+        const res = await fetch('/api/multistream/state');
+        const data = await res.json();
+        Object.assign(state, data);
+      } catch (_) {}
+      renderUI();
+      connectSSE();
+
+      // Interval input: save on change
+      document.getElementById('interval-input').addEventListener('change', e => {
+        const val = Math.max(5, Math.min(600, Number(e.target.value) || 30));
+        cmd('setRotation', { enabled: state.rotationEnabled, intervalSec: val });
+      });
+
+      // Add stream on Enter key
+      document.getElementById('url-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') addStream();
+      });
+
+      // Clear error styling when typing
+      document.getElementById('url-input').addEventListener('input', () => {
+        document.getElementById('url-input').classList.remove('error');
+        const hint = document.getElementById('url-hint');
+        hint.textContent = '';
+        hint.className = 'url-hint';
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
