@@ -717,20 +717,25 @@ function rebalanceSlots(ms) {
 }
 
 function advanceRotation(ms) {
-  if (ms.streams.length <= 4) return;
-  ms.rotationOffset = (ms.rotationOffset + 1) % ms.streams.length;
-  ms.visibleSlots = Array.from({ length: 4 }, (_, i) =>
-    ms.streams[(ms.rotationOffset + i) % ms.streams.length]?.id ?? null
-  );
-  if (!ms.visibleSlots.includes(ms.focusedId)) {
-    ms.focusedId = ms.visibleSlots[0] ?? null;
+  // Swap visible streams only when there are more than 4 configured
+  if (ms.streams.length > 4) {
+    ms.rotationOffset = (ms.rotationOffset + 1) % ms.streams.length;
+    ms.visibleSlots = Array.from({ length: 4 }, (_, i) =>
+      ms.streams[(ms.rotationOffset + i) % ms.streams.length]?.id ?? null
+    );
+  }
+  // Always cycle audio focus to the next visible stream
+  const visible = ms.visibleSlots.filter(Boolean);
+  if (visible.length > 0) {
+    const cur = visible.indexOf(ms.focusedId);
+    ms.focusedId = visible[(cur + 1) % visible.length];
   }
 }
 
 function startMsRotation() {
   clearInterval(msRotationTimer);
   msRotationTimer = null;
-  if (multistreamState.rotationEnabled && multistreamState.streams.length > 4) {
+  if (multistreamState.rotationEnabled && multistreamState.streams.length >= 2) {
     msRotationTimer = setInterval(() => {
       advanceRotation(multistreamState);
       broadcast({ type: 'msCommand', cmd: 'rotateNow', ...multistreamState });
