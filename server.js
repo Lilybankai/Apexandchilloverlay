@@ -46,6 +46,18 @@ let serverState = {
 const simgridCache = {};
 const slpCache = {};
 
+// ── Multi-stream state ────────────────────────────────────────────────────────
+let multistreamState = {
+  streams: [],                            // [{id, url, type, embedId, label}]
+  visibleSlots: [null, null, null, null], // stream ids (or null) for each of the 4 grid slots
+  rotationOffset: 0,                      // index cursor for rotation
+  focusedId: null,                        // stream id with audio; null = mute all
+  layout: 'grid',                         // 'grid' | 'pip'
+  rotationEnabled: false,
+  rotationIntervalSec: 30,
+  twitchParent: 'localhost',
+};
+
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
   const cached = simgridCache[url];
@@ -467,7 +479,7 @@ app.get('/api/events', (req, res) => {
   clients.push({ id, res });
 
   // immediately push current state so new connections sync up
-  send(res, { type: 'state', ...serverState });
+  send(res, { type: 'state', ...serverState, multistream: multistreamState });
 
   req.on('close', () => {
     clients = clients.filter(c => c.id !== id);
@@ -645,6 +657,140 @@ app.get('/api/gt7/career', async (req, res) => {
   } catch (error) {
     res.status(502).json({ error: true, message: String(error?.message || error) });
   }
+});
+
+// ── Multi-stream helpers ──────────────────────────────────────────────────────
+function generateStreamId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function parseStreamUrl(rawUrl) {
+  let u;
+  try {
+    const normalized = rawUrl.trim().startsWith('http') ? rawUrl.trim() : `https://${rawUrl.trim()}`;
+    u = new URL(normalized);
+  } catch (_) { return null; }
+
+  const host = u.hostname.replace(/^www\./, '');
+
+  if (host === 'youtu.be') {
+    const videoId = u.pathname.slice(1).split('?')[0];
+    if (/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      return { type: 'youtube', embedId: videoId, label: `YouTube · ${videoId}` };
+    }
+  }
+
+  if (host === 'youtube.com') {
+    if (u.pathname === '/watch') {
+      const videoId = u.searchParams.get('v') || '';
+      if (/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return { type: 'youtube', embedId: videoId, label: `YouTube · ${videoId}` };
+      }
+    }
+    const parts = u.pathname.split('/').filter(Boolean);
+    if ((parts[0] === 'live' || parts[0] === 'embed') && parts[1]) {
+      const videoId = parts[1];
+      if (/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return { type: 'youtube', embedId: videoId, label: `YouTube · ${videoId}` };
+      }
+    }
+  }
+
+  if (host === 'twitch.tv') {
+    const channel = u.pathname.split('/').filter(Boolean)[0] || '';
+    if (/^[a-zA-Z0-9_]{1,25}$/.test(channel)) {
+      return { type: 'twitch', embedId: channel.toLowerCase(), label: `Twitch · ${channel}` };
+    }
+  }
+
+  return null;
+}
+
+function rebalanceSlots(ms) {
+  const visibleSet = new Set(ms.visibleSlots.filter(Boolean));
+  const pool = ms.streams.filter(s => !visibleSet.has(s.id));
+  ms.visibleSlots = ms.visibleSlots.map(id => {
+    if (id !== null) return id;
+    return pool.shift()?.id ?? null;
+  });
+}
+
+function advanceRotation(ms) {
+  if (ms.streams.length <= 4) return;
+  ms.rotationOffset = (ms.rotationOffset + 1) % ms.streams.length;
+  ms.visibleSlots = Array.from({ length: 4 }, (_, i) =>
+    ms.streams[(ms.rotationOffset + i) % ms.streams.length]?.id ?? null
+  );
+  if (!ms.visibleSlots.includes(ms.focusedId)) {
+    ms.focusedId = ms.visibleSlots[0] ?? null;
+  }
+}
+
+// ── Multi-stream API ──────────────────────────────────────────────────────────
+app.get('/api/multistream/state', (_req, res) => res.json(multistreamState));
+
+app.post('/api/multistream/command', (req, res) => {
+  const { cmd, ...args } = req.body || {};
+
+  if (cmd === 'addStream') {
+    if (multistreamState.streams.length >= 8) {
+      return res.status(400).json({ ok: false, error: 'max_streams' });
+    }
+    const parsed = parseStreamUrl(args.url || '');
+    if (!parsed) return res.status(400).json({ ok: false, error: 'invalid_url' });
+    const stream = { id: generateStreamId(), url: args.url, ...parsed };
+    multistreamState.streams.push(stream);
+    rebalanceSlots(multistreamState);
+    if (!multistreamState.focusedId) {
+      multistreamState.focusedId = multistreamState.visibleSlots[0] ?? null;
+    }
+  }
+
+  if (cmd === 'removeStream') {
+    const id = args.id;
+    multistreamState.streams = multistreamState.streams.filter(s => s.id !== id);
+    multistreamState.visibleSlots = multistreamState.visibleSlots.map(s => (s === id ? null : s));
+    rebalanceSlots(multistreamState);
+    if (multistreamState.focusedId === id) {
+      multistreamState.focusedId = multistreamState.visibleSlots[0] ?? null;
+    }
+    if (multistreamState.rotationOffset >= Math.max(1, multistreamState.streams.length)) {
+      multistreamState.rotationOffset = 0;
+    }
+  }
+
+  if (cmd === 'setFocus') {
+    const id = args.id;
+    if (id === null || multistreamState.visibleSlots.includes(id)) {
+      multistreamState.focusedId = id ?? null;
+    } else {
+      return res.status(400).json({ ok: false, error: 'unknown_stream' });
+    }
+  }
+
+  if (cmd === 'setLayout') {
+    if (args.layout === 'grid' || args.layout === 'pip') {
+      multistreamState.layout = args.layout;
+    }
+  }
+
+  if (cmd === 'setRotation') {
+    multistreamState.rotationEnabled = !!args.enabled;
+    if (args.intervalSec != null) {
+      multistreamState.rotationIntervalSec = Math.max(5, Number(args.intervalSec) || 30);
+    }
+  }
+
+  if (cmd === 'rotateNow') {
+    advanceRotation(multistreamState);
+  }
+
+  if (cmd === 'setTwitchParent') {
+    multistreamState.twitchParent = String(args.parent || 'localhost').trim();
+  }
+
+  broadcast({ type: 'msCommand', cmd, ...multistreamState });
+  res.json({ ok: true, multistream: multistreamState });
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
