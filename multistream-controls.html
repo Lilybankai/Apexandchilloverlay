@@ -419,7 +419,6 @@
       rotationIntervalSec: 30,
       twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
     };
-    let rotationTimer = null;
     let evtSource = null;
 
     // ── API ───────────────────────────────────────────────────────────────────
@@ -495,22 +494,10 @@
       el.classList.toggle('open');
     }
 
-    // ── Rotation timer (controls page owns this) ──────────────────────────────
-    function resetRotationTimer() {
-      clearInterval(rotationTimer);
-      if (state.rotationEnabled && state.streams.length > 4) {
-        rotationTimer = setInterval(() => cmd('rotateNow'), state.rotationIntervalSec * 1000);
-      }
-    }
-
     // ── State & render ────────────────────────────────────────────────────────
     function applyState(newState) {
-      const rotationChanged =
-        state.rotationEnabled !== newState.rotationEnabled ||
-        state.rotationIntervalSec !== newState.rotationIntervalSec;
       Object.assign(state, newState);
       renderUI();
-      if (rotationChanged) resetRotationTimer();
     }
 
     function renderUI() {

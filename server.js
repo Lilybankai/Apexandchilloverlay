@@ -57,6 +57,7 @@ let multistreamState = {
   rotationIntervalSec: 30,
   twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
 };
+let msRotationTimer = null;
 
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
@@ -726,6 +727,17 @@ function advanceRotation(ms) {
   }
 }
 
+function startMsRotation() {
+  clearInterval(msRotationTimer);
+  msRotationTimer = null;
+  if (multistreamState.rotationEnabled && multistreamState.streams.length > 4) {
+    msRotationTimer = setInterval(() => {
+      advanceRotation(multistreamState);
+      broadcast({ type: 'msCommand', cmd: 'rotateNow', ...multistreamState });
+    }, multistreamState.rotationIntervalSec * 1000);
+  }
+}
+
 // ── Multi-stream API ──────────────────────────────────────────────────────────
 app.get('/api/multistream/state', (_req, res) => res.json(multistreamState));
 
@@ -744,6 +756,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (!multistreamState.focusedId) {
       multistreamState.focusedId = multistreamState.visibleSlots[0] ?? null;
     }
+    startMsRotation(); // stream count may have crossed the >4 threshold
   }
 
   if (cmd === 'removeStream') {
@@ -757,6 +770,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (multistreamState.rotationOffset >= Math.max(1, multistreamState.streams.length)) {
       multistreamState.rotationOffset = 0;
     }
+    startMsRotation(); // stream count may have dropped to ≤4
   }
 
   if (cmd === 'setFocus') {
@@ -779,6 +793,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (args.intervalSec != null) {
       multistreamState.rotationIntervalSec = Math.max(5, Number(args.intervalSec) || 30);
     }
+    startMsRotation();
   }
 
   if (cmd === 'rotateNow') {
