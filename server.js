@@ -55,8 +55,9 @@ let multistreamState = {
   layout: 'grid',                         // 'grid' | 'pip'
   rotationEnabled: false,
   rotationIntervalSec: 30,
-  twitchParent: 'localhost',
+  twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
 };
+let msRotationTimer = null;
 
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
@@ -716,13 +717,29 @@ function rebalanceSlots(ms) {
 }
 
 function advanceRotation(ms) {
-  if (ms.streams.length <= 4) return;
-  ms.rotationOffset = (ms.rotationOffset + 1) % ms.streams.length;
-  ms.visibleSlots = Array.from({ length: 4 }, (_, i) =>
-    ms.streams[(ms.rotationOffset + i) % ms.streams.length]?.id ?? null
-  );
-  if (!ms.visibleSlots.includes(ms.focusedId)) {
-    ms.focusedId = ms.visibleSlots[0] ?? null;
+  // Swap visible streams only when there are more than 4 configured
+  if (ms.streams.length > 4) {
+    ms.rotationOffset = (ms.rotationOffset + 1) % ms.streams.length;
+    ms.visibleSlots = Array.from({ length: 4 }, (_, i) =>
+      ms.streams[(ms.rotationOffset + i) % ms.streams.length]?.id ?? null
+    );
+  }
+  // Always cycle audio focus to the next visible stream
+  const visible = ms.visibleSlots.filter(Boolean);
+  if (visible.length > 0) {
+    const cur = visible.indexOf(ms.focusedId);
+    ms.focusedId = visible[(cur + 1) % visible.length];
+  }
+}
+
+function startMsRotation() {
+  clearInterval(msRotationTimer);
+  msRotationTimer = null;
+  if (multistreamState.rotationEnabled && multistreamState.streams.length >= 2) {
+    msRotationTimer = setInterval(() => {
+      advanceRotation(multistreamState);
+      broadcast({ type: 'msCommand', cmd: 'rotateNow', ...multistreamState });
+    }, multistreamState.rotationIntervalSec * 1000);
   }
 }
 
@@ -744,6 +761,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (!multistreamState.focusedId) {
       multistreamState.focusedId = multistreamState.visibleSlots[0] ?? null;
     }
+    startMsRotation(); // stream count may have crossed the >4 threshold
   }
 
   if (cmd === 'removeStream') {
@@ -757,6 +775,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (multistreamState.rotationOffset >= Math.max(1, multistreamState.streams.length)) {
       multistreamState.rotationOffset = 0;
     }
+    startMsRotation(); // stream count may have dropped to ≤4
   }
 
   if (cmd === 'setFocus') {
@@ -779,6 +798,7 @@ app.post('/api/multistream/command', (req, res) => {
     if (args.intervalSec != null) {
       multistreamState.rotationIntervalSec = Math.max(5, Number(args.intervalSec) || 30);
     }
+    startMsRotation();
   }
 
   if (cmd === 'rotateNow') {

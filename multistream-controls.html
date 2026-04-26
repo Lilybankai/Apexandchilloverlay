@@ -396,7 +396,7 @@
       <div id="advanced-section">
         <div class="twitch-hint">Twitch embeds require the <code>parent</code> domain to match where this page is served from. Default: <code>localhost</code>.</div>
         <div class="twitch-row" style="margin-top:10px">
-          <input class="twitch-input" id="twitch-parent-input" type="text" placeholder="localhost" value="localhost">
+          <input class="twitch-input" id="twitch-parent-input" type="text" placeholder="ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk" value="ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk">
           <button class="twitch-save-btn" onclick="saveTwitchParent()">Save</button>
         </div>
       </div>
@@ -405,7 +405,7 @@
     <!-- Shortcuts -->
     <div class="shortcuts">
       <div class="shortcuts-title">Open in OBS</div>
-      <div class="shortcut-row"><span class="key-label">Overlay URL:</span> <code style="color:#20c9ff;font-size:12px;">http://localhost:3000/multistream-overlay.html</code></div>
+      <div class="shortcut-row"><span class="key-label">Overlay URL:</span> <code style="color:#20c9ff;font-size:12px;">https://ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk/multistream-overlay.html</code></div>
     </div>
   </div>
 
@@ -417,9 +417,8 @@
       layout: 'grid',
       rotationEnabled: false,
       rotationIntervalSec: 30,
-      twitchParent: 'localhost',
+      twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
     };
-    let rotationTimer = null;
     let evtSource = null;
 
     // ── API ───────────────────────────────────────────────────────────────────
@@ -495,22 +494,10 @@
       el.classList.toggle('open');
     }
 
-    // ── Rotation timer (controls page owns this) ──────────────────────────────
-    function resetRotationTimer() {
-      clearInterval(rotationTimer);
-      if (state.rotationEnabled && state.streams.length > 4) {
-        rotationTimer = setInterval(() => cmd('rotateNow'), state.rotationIntervalSec * 1000);
-      }
-    }
-
     // ── State & render ────────────────────────────────────────────────────────
     function applyState(newState) {
-      const rotationChanged =
-        state.rotationEnabled !== newState.rotationEnabled ||
-        state.rotationIntervalSec !== newState.rotationIntervalSec;
       Object.assign(state, newState);
       renderUI();
-      if (rotationChanged) resetRotationTimer();
     }
 
     function renderUI() {

@@ -9,7 +9,10 @@
       --blue: #20c9ff;
       --navy: #142f69;
       --orange: #ff8a00;
+      --gold: #ffd700;
+      --green: #00ff88;
       --panel: rgba(4, 10, 24, 0.96);
+      --panel-deep: rgba(2, 6, 18, 0.96);
       --text: #edf4ff;
       --dim: #88a0c9;
       --border: rgba(255, 255, 255, 0.09);
@@ -19,48 +22,156 @@
       width: 1920px;
       height: 1080px;
       overflow: hidden;
-      background: #000;
-      font-family: 'Rajdhani', Arial, sans-serif;
+      background: transparent;
+      font-family: 'Rajdhani', 'Arial', sans-serif;
     }
 
+    /* ── Full overlay wrapper (matches existing overlay.html) ─────────────────── */
     #multistream-overlay {
       position: absolute;
       inset: 0;
-      width: 1920px;
-      height: 1080px;
-      background: #050510;
+      background:
+        radial-gradient(circle at 20% -5%, rgba(32, 201, 255, 0.14), transparent 36%),
+        radial-gradient(circle at 84% 2%, rgba(255, 138, 0, 0.12), transparent 36%),
+        linear-gradient(180deg, var(--panel) 0%, var(--panel-deep) 100%);
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
-    /* ── GRID LAYOUT (2×2 equal) ─────────────────────────────────────────────── */
+    /* ── Header (identical to overlay.html #hdr) ─────────────────────────────── */
+    #hdr {
+      display: grid;
+      grid-template-columns: 420px 1fr 620px;
+      align-items: center;
+      padding: 0 42px;
+      height: 122px;
+      flex-shrink: 0;
+      background: linear-gradient(90deg, rgba(32, 201, 255, 0.14), rgba(20, 47, 105, 0.2) 48%, rgba(255, 138, 0, 0.14));
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    #hdr::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--blue), var(--orange), transparent);
+      opacity: 0.8;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 18px; min-width: 0; }
+    .league-logo {
+      width: 84px; height: 84px;
+      object-fit: contain;
+      border-radius: 14px;
+      background: rgba(3, 9, 24, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 8px;
+      box-shadow: 0 0 30px rgba(32, 201, 255, 0.2);
+    }
+    .brand-name {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 25px;
+      letter-spacing: 2px;
+      color: var(--text);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .brand-sub {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--dim);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+    .hdr-center { text-align: center; }
+    .hdr-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    }
+    .hdr-season {
+      font-size: 13px;
+      color: var(--dim);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+    .hdr-right { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+    .partner-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      min-width: 190px;
+      height: 74px;
+    }
+    .partner-card.league { min-width: 235px; }
+    .partner-logo {
+      max-width: 150px;
+      max-height: 52px;
+      width: auto; height: auto;
+      object-fit: contain;
+      filter: drop-shadow(0 0 12px rgba(10, 12, 18, 0.5));
+    }
+    .partner-meta { min-width: 0; }
+    .partner-label {
+      font-family: 'Orbitron', monospace;
+      color: var(--dim);
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .partner-name {
+      margin-top: 4px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    /* ── Stream grid area (fills remaining 958px below header) ────────────────── */
+    #stream-area {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #stream-grid {
+      width: 1920px;
+      height: 958px;
+    }
+
+    /* ── GRID LAYOUT (2×2 equal, 960×479) ───────────────────────────────────── */
     #multistream-overlay[data-layout='grid'] #stream-grid {
       display: grid;
       grid-template-columns: 960px 960px;
-      grid-template-rows: 540px 540px;
-      width: 1920px;
-      height: 1080px;
-      gap: 0;
+      grid-template-rows: 479px 479px;
     }
 
     #multistream-overlay[data-layout='grid'] .stream-cell {
       position: relative;
-      width: 960px;
-      height: 540px;
       overflow: hidden;
       background: #060614;
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
 
-    /* ── PiP LAYOUT (focused large left, 3 small right) ─────────────────────── */
+    /* ── PiP LAYOUT (focused 1280×958 left, 3×(640×319) right) ─────────────── */
     #multistream-overlay[data-layout='pip'] #stream-grid {
       display: grid;
       grid-template-columns: 1280px 640px;
-      grid-template-rows: 360px 360px 360px;
-      width: 1920px;
-      height: 1080px;
-      gap: 0;
+      grid-template-rows: 319px 320px 319px;
     }
 
-    /* Focused cell spans all 3 rows in the left column */
     #multistream-overlay[data-layout='pip'] .stream-cell {
       position: relative;
       overflow: hidden;
@@ -70,18 +181,14 @@
     #multistream-overlay[data-layout='pip'] .stream-cell.focused {
       grid-column: 1;
       grid-row: 1 / 4;
-      width: 1280px;
-      height: 1080px;
     }
 
-    /* Non-focused cells go in the right column (auto-placed) */
     #multistream-overlay[data-layout='pip'] .stream-cell:not(.focused) {
       grid-column: 2;
-      width: 640px;
-      height: 360px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
 
-    /* ── COMMON CELL STYLES ──────────────────────────────────────────────────── */
+    /* ── Common cell styles ──────────────────────────────────────────────────── */
     .stream-cell iframe {
       width: 100%;
       height: 100%;
@@ -101,21 +208,10 @@
       z-index: 10;
     }
 
-    /* Divider lines between cells in grid mode */
-    #multistream-overlay[data-layout='grid'] .stream-cell {
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    #multistream-overlay[data-layout='pip'] .stream-cell:not(.focused) {
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
     /* Stream label */
     .stream-label {
       position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      bottom: 0; left: 0; right: 0;
       padding: 6px 12px;
       background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
       font-family: 'Rajdhani', sans-serif;
@@ -131,10 +227,8 @@
     /* Audio badge */
     .audio-badge {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 28px;
-      height: 28px;
+      top: 10px; right: 10px;
+      width: 28px; height: 28px;
       border-radius: 50%;
       background: var(--blue);
       display: none;
@@ -143,12 +237,7 @@
       z-index: 15;
       box-shadow: 0 0 12px rgba(32, 201, 255, 0.6);
     }
-
-    .audio-badge svg {
-      width: 14px;
-      height: 14px;
-      fill: #000;
-    }
+    .audio-badge svg { width: 14px; height: 14px; fill: #000; }
 
     /* Empty cell placeholder */
     .stream-cell.empty {
@@ -157,20 +246,17 @@
       align-items: center;
       justify-content: center;
     }
-
     .stream-cell.empty::before {
       content: '';
-      width: 40px;
-      height: 40px;
+      width: 40px; height: 40px;
       border: 2px solid rgba(255, 255, 255, 0.07);
       border-radius: 50%;
     }
 
-    /* Slot index corner label (subtle, for debugging / OBS setup) */
+    /* Slot index corner label */
     .slot-index {
       position: absolute;
-      top: 6px;
-      left: 10px;
+      top: 6px; left: 10px;
       font-family: 'Orbitron', monospace;
       font-size: 10px;
       color: rgba(255, 255, 255, 0.12);
@@ -182,36 +268,65 @@
 </head>
 <body>
   <div id="multistream-overlay" data-layout="grid">
-    <div id="stream-grid">
-      <div class="stream-cell empty" id="cell-0">
-        <span class="slot-index">01</span>
-        <div class="audio-badge">
-          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+
+    <!-- Header — identical branding to Championship Overlay -->
+    <div id="hdr">
+      <div class="hdr-left">
+        <img class="league-logo" src="/download.jpg" alt="Apex and Chill League Logo">
+        <div>
+          <div class="brand-name">Apex &amp; Chill</div>
+          <div class="brand-sub">Racing League Broadcast Overlay</div>
         </div>
-        <div class="stream-label"></div>
       </div>
-      <div class="stream-cell empty" id="cell-1">
-        <span class="slot-index">02</span>
-        <div class="audio-badge">
-          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
-        </div>
-        <div class="stream-label"></div>
+      <div class="hdr-center">
+        <div class="hdr-title">Live Stream Grid</div>
+        <div class="hdr-season">Multi-Stream Broadcast</div>
       </div>
-      <div class="stream-cell empty" id="cell-2">
-        <span class="slot-index">03</span>
-        <div class="audio-badge">
-          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+      <div class="hdr-right">
+        <div class="partner-card league">
+          <img class="partner-logo" src="/Logo_Transparent-01_smaller.png" alt="League Partner">
+          <div class="partner-meta">
+            <div class="partner-label">League Partner</div>
+            <div class="partner-name">SimEndurance</div>
+          </div>
         </div>
-        <div class="stream-label"></div>
-      </div>
-      <div class="stream-cell empty" id="cell-3">
-        <span class="slot-index">04</span>
-        <div class="audio-badge">
-          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
-        </div>
-        <div class="stream-label"></div>
       </div>
     </div>
+
+    <!-- Stream grid -->
+    <div id="stream-area">
+      <div id="stream-grid">
+        <div class="stream-cell empty" id="cell-0">
+          <span class="slot-index">01</span>
+          <div class="audio-badge">
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+          </div>
+          <div class="stream-label"></div>
+        </div>
+        <div class="stream-cell empty" id="cell-1">
+          <span class="slot-index">02</span>
+          <div class="audio-badge">
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+          </div>
+          <div class="stream-label"></div>
+        </div>
+        <div class="stream-cell empty" id="cell-2">
+          <span class="slot-index">03</span>
+          <div class="audio-badge">
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+          </div>
+          <div class="stream-label"></div>
+        </div>
+        <div class="stream-cell empty" id="cell-3">
+          <span class="slot-index">04</span>
+          <div class="audio-badge">
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+          </div>
+          <div class="stream-label"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
   <script src="/scripts/multistream/overlay.js"></script>
 </body>
