@@ -175,22 +175,25 @@
         return;
       }
 
+      // Explicit pixel dimensions: YT player needs a real size for its
+      // internal renderer. Passing '100%' strings produces audio but no
+      // video frame in some player versions.
+      const w = cell.offsetWidth || 960;
+      const h = cell.offsetHeight || 479;
+
       new window.YT.Player(containerId, {
         videoId: stream.embedId,
-        width: '100%',
-        height: '100%',
+        width: w,
+        height: h,
         playerVars: {
           autoplay: 1,
           mute: 1,           // always start muted — unmuted via API in onReady
-          controls: 0,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
           iv_load_policy: 3, // hide annotations
-          disablekb: 1,      // no keyboard shortcuts captured by iframe
-          fs: 0,             // no fullscreen button
           enablejsapi: 1,
-          origin: location.hostname || 'localhost',
+          origin: location.origin || location.hostname || 'localhost',
         },
         events: {
           onReady(e) {
