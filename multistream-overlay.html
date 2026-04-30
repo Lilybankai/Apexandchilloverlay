@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Permissions-Policy" content="autoplay=*">
   <title>Multi-Stream Overlay — Apex &amp; Chill</title>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
@@ -190,11 +191,13 @@
 
     /* ── Common cell styles ──────────────────────────────────────────────────── */
     .stream-cell iframe {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       border: none;
       display: block;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.45s ease;
     }
 
     /* Focus glow border */
@@ -278,6 +281,19 @@
       border: none;
       display: block;
     }
+
+    /* YouTube IFrame API container — fills the cell */
+    .yt-embed-container {
+      position: absolute;
+      inset: 0;
+      transition: opacity 0.45s ease;
+    }
+    .yt-embed-container iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -343,14 +359,21 @@
 
   </div>
   <script>
-    // OBS browser sources render into an offscreen CEF buffer.
-    // getBoundingClientRect() returns {width:0,height:0} for all elements in
-    // that mode because there is no real visual viewport to measure against.
-    // The Twitch embed SDK calls getBoundingClientRect on its own iframe to
-    // decide autoplay eligibility ("style visibility" check). Patching it here
-    // — before the SDK loads — makes it fall back to offsetWidth/offsetHeight,
-    // which use CSS layout dimensions and are correct in offscreen mode.
+    // OBS browser sources render into an offscreen CEF buffer. Two browser APIs
+    // return incorrect values in that mode, both of which the Twitch embed SDK
+    // uses for its autoplay eligibility checks:
+    //
+    // 1. getBoundingClientRect() → always {width:0,height:0} (no real viewport).
+    //    Twitch uses this for its "style visibility" (dimension) check.
+    //    Fix: fall back to offsetWidth/offsetHeight which use CSS layout values.
+    //
+    // 2. IntersectionObserver → never fires, or fires with intersectionRatio 0,
+    //    because there is no visual viewport to intersect against.
+    //    Twitch uses this for its "viewport visibility" check via maybePlay().
+    //    Fix: proactively fire the callback with isIntersecting:true for any
+    //    element that has real CSS layout dimensions.
     (function () {
+      // ── getBoundingClientRect patch ─────────────────────────────────────────
       var _bcr = Element.prototype.getBoundingClientRect;
       Element.prototype.getBoundingClientRect = function () {
         var r = _bcr.call(this);
@@ -366,8 +389,47 @@
         }
         return r;
       };
+
+      // ── IntersectionObserver patch ──────────────────────────────────────────
+      var _IO = window.IntersectionObserver;
+      if (!_IO) return;
+      window.IntersectionObserver = function (cb, opts) {
+        var io = new _IO(function (entries) {
+          // Remap entries where OBS reports 0 intersection despite real dimensions
+          cb(entries.map(function (e) {
+            if (!e.isIntersecting &&
+                e.target.offsetWidth > 0 && e.target.offsetHeight > 0) {
+              var w = e.target.offsetWidth, h = e.target.offsetHeight;
+              return { isIntersecting: true, intersectionRatio: 1, target: e.target,
+                       time: e.time, rootBounds: e.rootBounds,
+                       boundingClientRect: { width:w,height:h,top:0,left:0,right:w,bottom:h,x:0,y:0 },
+                       intersectionRect:   { width:w,height:h,top:0,left:0,right:w,bottom:h,x:0,y:0 } };
+            }
+            return e;
+          }), io);
+        }, opts);
+
+        var _obs = io.observe.bind(io);
+        io.observe = function (el) {
+          _obs(el);
+          // Also fire immediately — OBS's offscreen IO may never trigger at all
+          requestAnimationFrame(function () {
+            var w = el.offsetWidth, h = el.offsetHeight;
+            if (w > 0 || h > 0) {
+              cb([{ isIntersecting: true, intersectionRatio: 1, target: el,
+                    time: performance.now(), rootBounds: null,
+                    boundingClientRect: { width:w,height:h,top:0,left:0,right:w,bottom:h,x:0,y:0 },
+                    intersectionRect:   { width:w,height:h,top:0,left:0,right:w,bottom:h,x:0,y:0 } }],
+                 io);
+            }
+          });
+        };
+        return io;
+      };
+      window.IntersectionObserver.prototype = _IO.prototype;
     })();
   </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://embed.twitch.tv/embed/v1.js"></script>
   <script src="/scripts/multistream/overlay.js"></script>
 </body>
