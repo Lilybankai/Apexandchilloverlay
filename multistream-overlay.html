@@ -281,6 +281,19 @@
       border: none;
       display: block;
     }
+
+    /* YouTube IFrame API container — fills the cell */
+    .yt-embed-container {
+      position: absolute;
+      inset: 0;
+      transition: opacity 0.45s ease;
+    }
+    .yt-embed-container iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -416,6 +429,7 @@
       window.IntersectionObserver.prototype = _IO.prototype;
     })();
   </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://embed.twitch.tv/embed/v1.js"></script>
   <script src="/scripts/multistream/overlay.js"></script>
 </body>
