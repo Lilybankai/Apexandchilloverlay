@@ -264,6 +264,20 @@
       z-index: 5;
       pointer-events: none;
     }
+
+    /* Twitch SDK embed container — fills the cell */
+    .twitch-embed-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .twitch-embed-container iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -328,6 +342,7 @@
     </div>
 
   </div>
+  <script src="https://embed.twitch.tv/embed/v1.js"></script>
   <script src="/scripts/multistream/overlay.js"></script>
 </body>
 </html>

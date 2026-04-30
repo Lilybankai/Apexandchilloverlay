@@ -15,23 +15,30 @@
     evtSource: null,
   };
 
-  function buildEmbedUrl(stream, isFocused) {
-    const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
-    if (stream.type === 'youtube') {
-      return `https://www.youtube.com/embed/${stream.embedId}`
-           + `?autoplay=1&mute=${isFocused ? 0 : 1}&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
-    }
-    if (stream.type === 'twitch') {
-      return `https://player.twitch.tv/?channel=${stream.embedId}`
-           + `&parent=${twitchParent}&autoplay=true&muted=${!isFocused}`;
-    }
-    return '';
-  }
+  // Twitch.Embed instances keyed by slot index
+  const twitchPlayers = {};
 
   function getStreamById(id) {
     return ms.state.streams.find(s => s.id === id) ?? null;
   }
 
+  function updateLayout(layout) {
+    const overlay = document.getElementById('multistream-overlay');
+    if (overlay) overlay.dataset.layout = layout;
+  }
+
+  // ── Destroy any player (Twitch or YouTube iframe) in a slot ──────────────
+  function destroySlot(slotIdx) {
+    if (twitchPlayers[slotIdx]) {
+      try { twitchPlayers[slotIdx] = null; } catch (_) {}
+      delete twitchPlayers[slotIdx];
+    }
+    const cell = document.getElementById(`cell-${slotIdx}`);
+    if (!cell) return;
+    cell.querySelectorAll('iframe, .twitch-embed-container').forEach(el => el.remove());
+  }
+
+  // ── Build / rebuild a cell completely ────────────────────────────────────
   function buildCell(slotIdx, streamId) {
     const cell = document.getElementById(`cell-${slotIdx}`);
     if (!cell) return;
@@ -42,41 +49,104 @@
     cell.classList.toggle('focused', isFocused);
     cell.classList.toggle('empty', !stream);
 
-    // Update label
     const label = cell.querySelector('.stream-label');
-    if (label) label.textContent = stream ? stream.label : '';
+    if (label) label.textContent = stream ? (stream.label || '') : '';
 
-    // Update audio badge
     const badge = cell.querySelector('.audio-badge');
     if (badge) badge.style.display = isFocused ? 'flex' : 'none';
 
-    // Rebuild iframe only if stream changed
-    const existing = cell.querySelector('iframe');
-    const newSrc = stream ? buildEmbedUrl(stream, isFocused) : '';
+    destroySlot(slotIdx);
 
-    if (!stream) {
-      if (existing) existing.remove();
-      return;
-    }
+    if (!stream) return;
 
-    if (!existing) {
-      const iframe = document.createElement('iframe');
-      iframe.allow = 'autoplay; fullscreen';
-      iframe.allowFullscreen = true;
-      iframe.src = newSrc;
-      iframe.style.opacity = '0';
-      iframe.addEventListener('load', () => { iframe.style.opacity = '1'; }, { once: true });
-      cell.appendChild(iframe);
+    if (stream.type === 'twitch') {
+      buildTwitchEmbed(cell, slotIdx, stream, isFocused);
     } else {
-      // Only rebuild if src meaningfully changed (muted/unmuted change or different stream)
-      if (existing.src !== newSrc) {
-        existing.style.opacity = '0';
-        existing.src = newSrc;
-        existing.addEventListener('load', () => { existing.style.opacity = '1'; }, { once: true });
-      }
+      buildYouTubeIframe(cell, stream, isFocused);
     }
   }
 
+  function buildTwitchEmbed(cell, slotIdx, stream, isFocused) {
+    if (!window.Twitch || !window.Twitch.Embed) {
+      // SDK not loaded yet — retry shortly
+      setTimeout(() => buildCell(slotIdx, stream.id), 500);
+      return;
+    }
+
+    const containerId = `twitch-embed-${slotIdx}`;
+    let container = document.getElementById(containerId);
+    if (container) container.remove();
+
+    container = document.createElement('div');
+    container.id = containerId;
+    container.className = 'twitch-embed-container';
+    cell.appendChild(container);
+
+    const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
+
+    const embed = new window.Twitch.Embed(containerId, {
+      channel: stream.embedId,
+      parent: [twitchParent],
+      autoplay: true,
+      muted: true,      // always start muted — unmute after VIDEO_READY if focused
+      layout: 'video',  // no Twitch UI chrome
+      width: '100%',
+      height: '100%',
+    });
+
+    embed.addEventListener(window.Twitch.Embed.VIDEO_READY, () => {
+      const player = embed.getPlayer();
+      player.play();
+      player.setMuted(!isFocused);
+    });
+
+    twitchPlayers[slotIdx] = embed;
+  }
+
+  function buildYouTubeIframe(cell, stream, isFocused) {
+    const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
+    const src = `https://www.youtube.com/embed/${stream.embedId}`
+      + `?autoplay=1&mute=${isFocused ? 0 : 1}&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
+
+    const iframe = document.createElement('iframe');
+    iframe.allow = 'autoplay; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.src = src;
+    iframe.style.opacity = '0';
+    iframe.addEventListener('load', () => { iframe.style.opacity = '1'; }, { once: true });
+    cell.appendChild(iframe);
+  }
+
+  // ── Update focus only (no stream change) ─────────────────────────────────
+  function updateCellFocus(slotIdx, streamId) {
+    const cell = document.getElementById(`cell-${slotIdx}`);
+    if (!cell) return;
+
+    const isFocused = streamId !== null && streamId === ms.state.focusedId;
+
+    cell.classList.toggle('focused', isFocused);
+
+    const badge = cell.querySelector('.audio-badge');
+    if (badge) badge.style.display = isFocused ? 'flex' : 'none';
+
+    const stream = streamId ? getStreamById(streamId) : null;
+    if (!stream) return;
+
+    if (stream.type === 'twitch') {
+      const embed = twitchPlayers[slotIdx];
+      if (embed) {
+        try {
+          const player = embed.getPlayer();
+          player.setMuted(!isFocused);
+        } catch (_) {}
+      }
+    } else {
+      // YouTube — rebuild iframe with updated mute param
+      buildCell(slotIdx, streamId);
+    }
+  }
+
+  // ── Full render (initial load or layout change) ───────────────────────────
   function renderAll(state) {
     updateLayout(state.layout);
     for (let i = 0; i < 4; i++) {
@@ -84,42 +154,22 @@
     }
   }
 
+  // ── Diff-based update ─────────────────────────────────────────────────────
   function applyDiff(newState, oldLayout) {
     if (newState.layout !== oldLayout) updateLayout(newState.layout);
 
-    // Apply slot + focus changes slot by slot
     for (let i = 0; i < 4; i++) {
       const oldId = ms.prevSlots[i];
       const newId = newState.visibleSlots[i] ?? null;
       const wasFocused = oldId === ms.prevFocusedId;
       const isFocused = newId === newState.focusedId;
 
-      // Rebuild if stream changed or focus changed
-      if (newId !== oldId || wasFocused !== isFocused) {
-        // Temporarily update state so buildCell reads correct values
-        ms.state.visibleSlots[i] = newId;
-        ms.state.focusedId = newState.focusedId;
-        ms.state.twitchParent = newState.twitchParent;
+      if (newId !== oldId) {
         buildCell(i, newId);
+      } else if (wasFocused !== isFocused) {
+        updateCellFocus(i, newId);
       }
     }
-
-    // Update focus badge on slots that didn't change stream but changed focus role
-    for (let i = 0; i < 4; i++) {
-      const cell = document.getElementById(`cell-${i}`);
-      if (!cell) continue;
-      const id = newState.visibleSlots[i] ?? null;
-      const isFocused = id !== null && id === newState.focusedId;
-      cell.classList.toggle('focused', isFocused);
-      const badge = cell.querySelector('.audio-badge');
-      if (badge) badge.style.display = isFocused ? 'flex' : 'none';
-    }
-  }
-
-  function updateLayout(layout) {
-    const overlay = document.getElementById('multistream-overlay');
-    if (!overlay) return;
-    overlay.dataset.layout = layout;
   }
 
   function applyState(newState) {
