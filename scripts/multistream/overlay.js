@@ -68,7 +68,6 @@
 
   function buildTwitchEmbed(cell, slotIdx, stream, isFocused) {
     if (!window.Twitch || !window.Twitch.Embed) {
-      // SDK not loaded yet — retry shortly
       setTimeout(() => buildCell(slotIdx, stream.id), 500);
       return;
     }
@@ -84,23 +83,35 @@
 
     const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
 
-    const embed = new window.Twitch.Embed(containerId, {
-      channel: stream.embedId,
-      parent: [twitchParent],
-      autoplay: true,
-      muted: true,      // always start muted — unmute after VIDEO_READY if focused
-      layout: 'video',  // no Twitch UI chrome
-      width: '100%',
-      height: '100%',
-    });
+    // Defer to after the browser's layout pass so the container has non-zero
+    // offsetWidth/offsetHeight. The Twitch SDK checks element dimensions
+    // synchronously at construction — a 0×0 container triggers its
+    // "style visibility" autoplay block even in OBS browser sources.
+    requestAnimationFrame(() => {
+      // Guard: slot may have been recycled before RAF fired
+      if (!document.getElementById(containerId)) return;
 
-    embed.addEventListener(window.Twitch.Embed.VIDEO_READY, () => {
-      const player = embed.getPlayer();
-      player.play();
-      player.setMuted(!isFocused);
-    });
+      const w = container.offsetWidth || cell.offsetWidth || 960;
+      const h = container.offsetHeight || cell.offsetHeight || 479;
 
-    twitchPlayers[slotIdx] = embed;
+      const embed = new window.Twitch.Embed(containerId, {
+        channel: stream.embedId,
+        parent: [twitchParent],
+        autoplay: true,
+        muted: true,
+        layout: 'video',
+        width: w,
+        height: h,
+      });
+
+      embed.addEventListener(window.Twitch.Embed.VIDEO_READY, () => {
+        const player = embed.getPlayer();
+        player.play();
+        player.setMuted(!isFocused);
+      });
+
+      twitchPlayers[slotIdx] = embed;
+    });
   }
 
   function buildYouTubeIframe(cell, stream, isFocused) {
