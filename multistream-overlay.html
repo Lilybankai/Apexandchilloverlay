@@ -342,6 +342,32 @@
     </div>
 
   </div>
+  <script>
+    // OBS browser sources render into an offscreen CEF buffer.
+    // getBoundingClientRect() returns {width:0,height:0} for all elements in
+    // that mode because there is no real visual viewport to measure against.
+    // The Twitch embed SDK calls getBoundingClientRect on its own iframe to
+    // decide autoplay eligibility ("style visibility" check). Patching it here
+    // — before the SDK loads — makes it fall back to offsetWidth/offsetHeight,
+    // which use CSS layout dimensions and are correct in offscreen mode.
+    (function () {
+      var _bcr = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        var r = _bcr.call(this);
+        if (r.width === 0 && r.height === 0 &&
+            (this.offsetWidth > 0 || this.offsetHeight > 0)) {
+          var w = this.offsetWidth, h = this.offsetHeight;
+          return { width: w, height: h, top: 0, left: 0,
+                   right: w, bottom: h, x: 0, y: 0,
+                   toJSON: function () {
+                     return { width: w, height: h, top: 0, left: 0,
+                              right: w, bottom: h, x: 0, y: 0 };
+                   } };
+        }
+        return r;
+      };
+    })();
+  </script>
   <script src="https://embed.twitch.tv/embed/v1.js"></script>
   <script src="/scripts/multistream/overlay.js"></script>
 </body>
