@@ -27,18 +27,16 @@
     if (overlay) overlay.dataset.layout = layout;
   }
 
-  // ── Destroy any player (Twitch or YouTube iframe) in a slot ──────────────
-  function destroySlot(slotIdx) {
-    if (twitchPlayers[slotIdx]) {
-      try { twitchPlayers[slotIdx] = null; } catch (_) {}
-      delete twitchPlayers[slotIdx];
-    }
-    const cell = document.getElementById(`cell-${slotIdx}`);
-    if (!cell) return;
-    cell.querySelectorAll('iframe, .twitch-embed-container').forEach(el => el.remove());
+  // Fade an element to opacity 0 then remove it. Idempotent via data-leaving.
+  function fadeOut(el, ms = 450) {
+    if (!el || el.dataset.leaving) return;
+    el.dataset.leaving = '1';
+    el.style.transition = `opacity ${ms}ms ease`;
+    el.style.opacity = '0';
+    setTimeout(() => el.parentNode && el.parentNode.removeChild(el), ms);
   }
 
-  // ── Build / rebuild a cell completely ────────────────────────────────────
+  // ── Build / rebuild a cell ────────────────────────────────────────────────
   function buildCell(slotIdx, streamId) {
     const cell = document.getElementById(`cell-${slotIdx}`);
     if (!cell) return;
@@ -55,9 +53,14 @@
     const badge = cell.querySelector('.audio-badge');
     if (badge) badge.style.display = isFocused ? 'flex' : 'none';
 
-    destroySlot(slotIdx);
+    // Discard stale Twitch player reference; build functions manage crossfade
+    if (twitchPlayers[slotIdx]) delete twitchPlayers[slotIdx];
 
-    if (!stream) return;
+    if (!stream) {
+      cell.querySelectorAll('iframe:not([data-leaving]), .twitch-embed-container:not([data-leaving])')
+          .forEach(el => fadeOut(el));
+      return;
+    }
 
     if (stream.type === 'twitch') {
       buildTwitchEmbed(cell, slotIdx, stream, isFocused);
@@ -72,23 +75,26 @@
       return;
     }
 
-    const containerId = `twitch-embed-${slotIdx}`;
-    let container = document.getElementById(containerId);
-    if (container) container.remove();
+    // Capture currently-visible content to crossfade out once new stream is ready
+    const leaving = Array.from(
+      cell.querySelectorAll('iframe:not([data-leaving]), .twitch-embed-container:not([data-leaving])')
+    );
+    // Immediately remove any elements already mid-fade (rapid slot changes)
+    cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
 
-    container = document.createElement('div');
+    // Unique container ID so old containers can coexist during crossfade
+    const containerId = `twitch-embed-${slotIdx}-${Date.now()}`;
+    const container = document.createElement('div');
     container.id = containerId;
     container.className = 'twitch-embed-container';
+    container.style.opacity = '0';
     cell.appendChild(container);
 
     const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
 
-    // Defer to after the browser's layout pass so the container has non-zero
-    // offsetWidth/offsetHeight. The Twitch SDK checks element dimensions
-    // synchronously at construction — a 0×0 container triggers its
-    // "style visibility" autoplay block even in OBS browser sources.
+    // Defer to after layout pass — Twitch SDK checks element dimensions
+    // synchronously at construction time.
     requestAnimationFrame(() => {
-      // Guard: slot may have been recycled before RAF fired
       if (!document.getElementById(containerId)) return;
 
       const w = container.offsetWidth || cell.offsetWidth || 960;
@@ -108,6 +114,11 @@
         const player = embed.getPlayer();
         player.play();
         player.setMuted(!isFocused);
+
+        // Crossfade: new container fades in, old content fades out
+        container.style.transition = 'opacity 0.45s ease';
+        container.style.opacity = '1';
+        leaving.forEach(el => fadeOut(el));
       });
 
       twitchPlayers[slotIdx] = embed;
@@ -115,7 +126,14 @@
   }
 
   function buildYouTubeIframe(cell, stream, isFocused) {
-    const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
+    // Remove elements already mid-fade (rapid slot changes)
+    cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
+
+    // Capture currently-visible content to crossfade out once new frame loads
+    const leaving = Array.from(
+      cell.querySelectorAll('iframe:not([data-leaving]), .twitch-embed-container:not([data-leaving])')
+    );
+
     const src = `https://www.youtube.com/embed/${stream.embedId}`
       + `?autoplay=1&mute=${isFocused ? 0 : 1}&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
 
@@ -124,11 +142,25 @@
     iframe.allowFullscreen = true;
     iframe.src = src;
     iframe.style.opacity = '0';
-    iframe.addEventListener('load', () => { iframe.style.opacity = '1'; }, { once: true });
+
+    // Sequence number: if this slot is rebuilt again before load fires,
+    // the stale load handler removes itself silently instead of crossfading.
+    cell.dataset.loadSeq = String((parseInt(cell.dataset.loadSeq || '0') + 1));
+    const seq = cell.dataset.loadSeq;
+
+    iframe.addEventListener('load', () => {
+      if (cell.dataset.loadSeq !== seq) {
+        iframe.remove(); // Superseded — discard silently
+        return;
+      }
+      iframe.style.opacity = '1';       // Fade in new stream
+      leaving.forEach(el => fadeOut(el)); // Fade out old stream
+    }, { once: true });
+
     cell.appendChild(iframe);
   }
 
-  // ── Update focus only (no stream change) ─────────────────────────────────
+  // ── Update audio focus only (no stream change) ────────────────────────────
   function updateCellFocus(slotIdx, streamId) {
     const cell = document.getElementById(`cell-${slotIdx}`);
     if (!cell) return;
@@ -146,14 +178,10 @@
     if (stream.type === 'twitch') {
       const embed = twitchPlayers[slotIdx];
       if (embed) {
-        try {
-          const player = embed.getPlayer();
-          player.setMuted(!isFocused);
-        } catch (_) {}
+        try { embed.getPlayer().setMuted(!isFocused); } catch (_) {}
       }
     } else {
-      // YouTube — rebuild iframe with updated mute param
-      buildCell(slotIdx, streamId);
+      buildCell(slotIdx, streamId); // YouTube: rebuild with correct mute param
     }
   }
 
