@@ -15,7 +15,7 @@
     evtSource: null,
   };
 
-  const twitchPlayers = {}; // slotIdx → Twitch.Embed
+  const twitchPlayers = {}; // slotIdx → { iframe, slotIdx }
   const ytPlayers = {};     // slotIdx → YT.Player
 
   // ── YouTube IFrame API readiness ──────────────────────────────────────────
@@ -57,7 +57,6 @@
   // Selector for all live media in a cell (excludes elements already fading out)
   const LIVE_MEDIA = [
     'iframe:not([data-leaving])',
-    '.twitch-embed-container:not([data-leaving])',
     '.yt-embed-container:not([data-leaving])',
   ].join(', ');
 
@@ -101,55 +100,52 @@
     }
   }
 
-  // ── Twitch embed ──────────────────────────────────────────────────────────
+  // ── Twitch embed (direct iframe — bypasses SDK visibility checks) ────────
+  // The Twitch Embed SDK performs aggressive "style visibility" checks that
+  // fail in OBS's offscreen CEF renderer. These checks run inside the
+  // cross-origin player.twitch.tv iframe, so we cannot patch them.
+  //
+  // Solution: bypass the SDK entirely and use a direct <iframe> to
+  // player.twitch.tv. This avoids the SDK's JavaScript visibility checks.
+  // Autoplay with muted=true is honoured by CEF/Chrome browser policy.
+  //
+  // After the iframe loads, we simulate a user click on the iframe to
+  // satisfy any remaining browser-level autoplay-gate that requires a
+  // "user gesture" (OBS CEF sometimes enforces this).
   function buildTwitchEmbed(cell, slotIdx, stream, isFocused) {
-    if (!window.Twitch || !window.Twitch.Embed) {
-      setTimeout(() => buildCell(slotIdx, stream.id), 500);
-      return;
-    }
-
     const leaving = Array.from(cell.querySelectorAll(LIVE_MEDIA));
     cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
 
-    // Unique ID so old containers can coexist during crossfade
-    const containerId = `twitch-embed-${slotIdx}-${Date.now()}`;
-    const container = document.createElement('div');
-    container.id = containerId;
-    container.className = 'twitch-embed-container';
-    container.style.opacity = '0';
-    cell.appendChild(container);
-
     const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
 
-    // Defer to after layout pass — SDK checks element dimensions at construction
-    requestAnimationFrame(() => {
-      if (!document.getElementById(containerId)) return;
+    const iframe = document.createElement('iframe');
+    iframe.allow = 'autoplay; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.embedId)}`
+      + `&parent=${encodeURIComponent(twitchParent)}`
+      + '&autoplay=true'
+      + '&muted=true';
+    iframe.style.opacity = '0';
 
-      const w = container.offsetWidth || cell.offsetWidth || 960;
-      const h = container.offsetHeight || cell.offsetHeight || 479;
+    cell.appendChild(iframe);
 
-      const embed = new window.Twitch.Embed(containerId, {
-        channel: stream.embedId,
-        parent: [twitchParent],
-        autoplay: true,
-        muted: true,
-        layout: 'video',
-        width: w,
-        height: h,
-      });
+    iframe.addEventListener('load', () => {
+      iframe.style.transition = 'opacity 0.45s ease';
+      iframe.style.opacity = '1';
+      leaving.forEach(el => fadeOut(el));
 
-      embed.addEventListener(window.Twitch.Embed.VIDEO_READY, () => {
-        const player = embed.getPlayer();
-        player.play();
-        player.setMuted(!isFocused);
+      // Simulate a user click on the iframe — this satisfies any
+      // browser-level autoplay-gate that requires a "user gesture".
+      // In OBS CEF, dispatched events can count as user activation.
+      setTimeout(() => {
+        try {
+          iframe.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          iframe.focus();
+        } catch (_) {}
+      }, 1000);
+    }, { once: true });
 
-        container.style.transition = 'opacity 0.45s ease';
-        container.style.opacity = '1';
-        leaving.forEach(el => fadeOut(el));
-      });
-
-      twitchPlayers[slotIdx] = embed;
-    });
+    twitchPlayers[slotIdx] = { iframe, slotIdx };
   }
 
   // ── YouTube IFrame API player ─────────────────────────────────────────────
@@ -247,9 +243,16 @@
     if (!stream) return;
 
     if (stream.type === 'twitch') {
-      const embed = twitchPlayers[slotIdx];
-      if (embed) {
-        try { embed.getPlayer().setMuted(!isFocused); } catch (_) {}
+      const entry = twitchPlayers[slotIdx];
+      if (entry && entry.iframe) {
+        // Direct iframe — update muted parameter in the URL.
+        // This reloads the player but is the only reliable way
+        // without the SDK JS API.
+        try {
+          const url = new URL(entry.iframe.src);
+          url.searchParams.set('muted', isFocused ? 'false' : 'true');
+          entry.iframe.src = url.toString();
+        } catch (_) {}
       }
     } else {
       // YouTube: instant mute/unmute via API — no iframe rebuild needed
