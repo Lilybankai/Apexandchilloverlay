@@ -107,7 +107,7 @@
   //
   // Solution: bypass the SDK entirely and use a direct <iframe> to
   // player.twitch.tv. This avoids the SDK's JavaScript visibility checks.
-  // Autoplay with muted=true is honoured by CEF/Chrome browser policy.
+  // Non-focused streams stay muted so only the focused driver produces audio.
   //
   // After the iframe loads, we simulate a user click on the iframe to
   // satisfy any remaining browser-level autoplay-gate that requires a
@@ -124,7 +124,7 @@
     iframe.src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.embedId)}`
       + `&parent=${encodeURIComponent(twitchParent)}`
       + '&autoplay=true'
-      + '&muted=true';
+      + `&muted=${isFocused ? 'false' : 'true'}`;
     iframe.style.opacity = '0';
 
     cell.appendChild(iframe);
@@ -250,7 +250,9 @@
         // without the SDK JS API.
         try {
           const url = new URL(entry.iframe.src);
-          url.searchParams.set('muted', isFocused ? 'false' : 'true');
+          const nextMuted = isFocused ? 'false' : 'true';
+          if (url.searchParams.get('muted') === nextMuted) return;
+          url.searchParams.set('muted', nextMuted);
           entry.iframe.src = url.toString();
         } catch (_) {}
       }
