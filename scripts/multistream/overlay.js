@@ -107,7 +107,8 @@
   //
   // Solution: bypass the SDK entirely and use a direct <iframe> to
   // player.twitch.tv. This avoids the SDK's JavaScript visibility checks.
-  // Non-focused streams stay muted so only the focused driver produces audio.
+  // Twitch is most likely to autoplay in OBS when the player starts muted.
+  // Audio is handled as a best-effort concern separately from video startup.
   //
   // After the iframe loads, we simulate a user click on the iframe to
   // satisfy any remaining browser-level autoplay-gate that requires a
@@ -124,7 +125,7 @@
     iframe.src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.embedId)}`
       + `&parent=${encodeURIComponent(twitchParent)}`
       + '&autoplay=true'
-      + `&muted=${isFocused ? 'false' : 'true'}`;
+      + '&muted=true';
     iframe.style.opacity = '0';
 
     cell.appendChild(iframe);
@@ -243,19 +244,10 @@
     if (!stream) return;
 
     if (stream.type === 'twitch') {
-      const entry = twitchPlayers[slotIdx];
-      if (entry && entry.iframe) {
-        // Direct iframe — update muted parameter in the URL.
-        // This reloads the player but is the only reliable way
-        // without the SDK JS API.
-        try {
-          const url = new URL(entry.iframe.src);
-          const nextMuted = isFocused ? 'false' : 'true';
-          if (url.searchParams.get('muted') === nextMuted) return;
-          url.searchParams.set('muted', nextMuted);
-          entry.iframe.src = url.toString();
-        } catch (_) {}
-      }
+      // Keep Twitch muted and avoid changing the iframe URL on focus changes.
+      // Reloading the iframe is more likely to re-trigger Twitch/OBS autoplay
+      // blocking than it is to recover audio.
+      return;
     } else {
       // YouTube: instant mute/unmute via API — no iframe rebuild needed
       const player = ytPlayers[slotIdx];
