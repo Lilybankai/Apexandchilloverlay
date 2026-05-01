@@ -373,6 +373,19 @@
     //    Fix: proactively fire the callback with isIntersecting:true for any
     //    element that has real CSS layout dimensions.
     (function () {
+      // ── Page Visibility API patch ───────────────────────────────────────────
+      // OBS browser sources render offscreen, so document.hidden = true and
+      // visibilityState = 'hidden'. Both the Twitch and YouTube SDKs check
+      // these to decide whether to autoplay. Override so they always see the
+      // page as visible.
+      Object.defineProperty(document, 'hidden', { get: function () { return false; } });
+      Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; } });
+      // Suppress visibilitychange events that OBS fires — prevents SDKs from
+      // pausing playback when CEF reports the page as background.
+      document.addEventListener('visibilitychange', function (e) {
+        e.stopImmediatePropagation();
+      }, true);
+
       // ── getBoundingClientRect patch ─────────────────────────────────────────
       var _bcr = Element.prototype.getBoundingClientRect;
       Element.prototype.getBoundingClientRect = function () {

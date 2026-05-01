@@ -157,41 +157,49 @@
     const leaving = Array.from(cell.querySelectorAll(LIVE_MEDIA));
     cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
 
-    const containerId = `yt-embed-${slotIdx}-${Date.now()}`;
-    const container = document.createElement('div');
-    container.id = containerId;
-    container.className = 'yt-embed-container';
-    container.style.opacity = '0';
-    cell.appendChild(container);
+    // YT.Player(targetId, …) *replaces* the target element with an iframe.
+    // Use a stable outer wrapper for opacity transitions and an inner
+    // placeholder div as the replacement target so the wrapper survives.
+    const ts = Date.now();
+    const wrapperId = `yt-wrap-${slotIdx}-${ts}`;
+    const targetId = `yt-target-${slotIdx}-${ts}`;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = wrapperId;
+    wrapper.className = 'yt-embed-container';
+    wrapper.style.opacity = '0';
+
+    const target = document.createElement('div');
+    target.id = targetId;
+    wrapper.appendChild(target);
+
+    cell.appendChild(wrapper);
 
     // Sequence guard — if this slot is rebuilt before the YT API is ready,
-    // the stale callback removes the orphaned container and exits.
+    // the stale callback removes the orphaned wrapper and exits.
     cell.dataset.ytSeq = String((parseInt(cell.dataset.ytSeq || '0') + 1));
     const seq = cell.dataset.ytSeq;
 
     waitForYT(() => {
-      if (cell.dataset.ytSeq !== seq || !document.getElementById(containerId)) {
-        container.remove();
+      if (cell.dataset.ytSeq !== seq || !document.getElementById(wrapperId)) {
+        wrapper.remove();
         return;
       }
 
-      // Explicit pixel dimensions: YT player needs a real size for its
-      // internal renderer. Passing '100%' strings produces audio but no
-      // video frame in some player versions.
       const w = cell.offsetWidth || 960;
       const h = cell.offsetHeight || 479;
 
-      new window.YT.Player(containerId, {
+      new window.YT.Player(targetId, {
         videoId: stream.embedId,
         width: w,
         height: h,
         playerVars: {
           autoplay: 1,
-          mute: 1,           // always start muted — unmuted via API in onReady
+          mute: 1,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
-          iv_load_policy: 3, // hide annotations
+          iv_load_policy: 3,
           enablejsapi: 1,
           origin: location.origin || location.hostname || 'localhost',
         },
@@ -199,7 +207,7 @@
           onReady(e) {
             if (cell.dataset.ytSeq !== seq) {
               try { e.target.destroy(); } catch (_) {}
-              container.remove();
+              wrapper.remove();
               return;
             }
             e.target.playVideo();
@@ -207,14 +215,15 @@
               e.target.unMute();
               e.target.setVolume(100);
             }
-            // Crossfade: fade new container in, fade old content out
-            container.style.opacity = '1';
+            // Crossfade: wrapper is the stable outer div that survived
+            // YT.Player's replacement of the inner target div
+            wrapper.style.opacity = '1';
             leaving.forEach(el => fadeOut(el));
 
             ytPlayers[slotIdx] = e.target;
           },
           onError() {
-            container.remove();
+            wrapper.remove();
           },
         },
       });
