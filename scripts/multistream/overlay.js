@@ -222,8 +222,10 @@
 
             ytPlayers[slotIdx] = e.target;
           },
-          onError() {
-            wrapper.remove();
+          onError(e) {
+            // Code 150 = embedding restricted but player may still load.
+            // Only remove the wrapper if the player never became ready.
+            if (!ytPlayers[slotIdx]) wrapper.remove();
           },
         },
       });
@@ -297,10 +299,9 @@
 
   function handleSSE(msg) {
     if (msg.type === 'state' && msg.multistream) {
-      Object.assign(ms.state, msg.multistream);
-      renderAll(ms.state);
-      ms.prevSlots = [...ms.state.visibleSlots];
-      ms.prevFocusedId = ms.state.focusedId;
+      // SSE pushes full state on connect. Use diff-based update so we
+      // don't tear down in-progress embeds that init() already started.
+      applyState(msg.multistream);
       return;
     }
     if (msg.type === 'msCommand') {
