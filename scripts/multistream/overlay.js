@@ -19,10 +19,10 @@
   const ytPlayers = {};     // slotIdx → YT.Player
 
   // ── YouTube IFrame API readiness ──────────────────────────────────────────
-  // The YT script fires window.onYouTubeIframeAPIReady when loaded.
-  // We chain onto it (don't replace it outright) and queue any player
-  // creation requests that arrive before the API is ready.
-  let ytReady = false;
+  // The API script tag loads before this module, so onYouTubeIframeAPIReady
+  // may have already fired. Detect that case and also install our own
+  // callback for when it hasn't fired yet.
+  let ytReady = !!(window.YT && window.YT.Player);
   const ytQueue = [];
   const _prevYTReady = window.onYouTubeIframeAPIReady;
   window.onYouTubeIframeAPIReady = function () {
