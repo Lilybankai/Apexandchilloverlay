@@ -358,6 +358,8 @@
     </div>
 
   </div>
+  <!-- Hidden container keeps Twitch embeds alive while rotated off-screen -->
+  <div id="twitch-park" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;"></div>
   <script>
     // OBS browser sources render into an offscreen CEF buffer. Two browser APIs
     // return incorrect values in that mode, both of which the Twitch embed SDK
