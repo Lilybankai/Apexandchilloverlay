@@ -203,6 +203,7 @@
 
       if (parked.player) {
         applyTwitchAudioFocus(parked.player, isFocused);
+        try { parked.player.play(); } catch (_) {}
       }
       twitchPlayers[slotIdx] = {
         player: parked.player,
@@ -439,9 +440,23 @@
   function applyDiff(newState, oldLayout) {
     if (newState.layout !== oldLayout) updateLayout(newState.layout);
 
+    const newSlots = newState.visibleSlots;
+
+    // Pre-park pass: move every Twitch embed whose stream is departing its
+    // current slot into the park BEFORE any slots are rebuilt. This ensures
+    // the parked embed is available when its new slot calls
+    // restoreOrBuildTwitchEmbed.
     for (let i = 0; i < 4; i++) {
       const oldId = ms.prevSlots[i];
-      const newId = newState.visibleSlots[i] ?? null;
+      const newId = newSlots[i] ?? null;
+      if (oldId && newId !== oldId && twitchPlayers[i]) {
+        parkTwitchEmbed(i);
+      }
+    }
+
+    for (let i = 0; i < 4; i++) {
+      const oldId = ms.prevSlots[i];
+      const newId = newSlots[i] ?? null;
       const wasFocused = oldId === ms.prevFocusedId;
       const isFocused = newId === newState.focusedId;
 
