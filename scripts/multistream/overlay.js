@@ -15,7 +15,7 @@
     evtSource: null,
   };
 
-  const twitchPlayers = {}; // slotIdx → { iframe, slotIdx }
+  const twitchPlayers = {}; // slotIdx → { player, iframe, slotIdx }
   const ytPlayers = {};     // slotIdx → YT.Player
 
   // ── YouTube IFrame API readiness ──────────────────────────────────────────
@@ -33,6 +33,43 @@
   function waitForYT(fn) {
     if (ytReady) fn(); else ytQueue.push(fn);
   }
+
+  // ── Twitch Embed API readiness ────────────────────────────────────────────
+  const twitchQueue = [];
+  function isTwitchReady() {
+    return !!(window.Twitch && window.Twitch.Player);
+  }
+  function flushTwitchQueue() {
+    twitchQueue.splice(0).forEach(entry => {
+      if (entry.done) return;
+      entry.done = true;
+      clearTimeout(entry.timer);
+      entry.fn();
+    });
+  }
+  function waitForTwitch(fn, onUnavailable) {
+    if (window.Twitch && window.Twitch.Player) {
+      fn();
+      return;
+    }
+    const entry = {
+      fn,
+      done: false,
+      timer: setTimeout(() => {
+        if (entry.done) return;
+        entry.done = true;
+        onUnavailable();
+      }, 3000),
+    };
+    twitchQueue.push(entry);
+  }
+  window.onTwitchEmbedReady = flushTwitchQueue;
+  const twitchReadyPoll = setInterval(() => {
+    if (isTwitchReady()) {
+      clearInterval(twitchReadyPoll);
+      flushTwitchQueue();
+    }
+  }, 100);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -57,6 +94,7 @@
   // Selector for all live media in a cell (excludes elements already fading out)
   const LIVE_MEDIA = [
     'iframe:not([data-leaving])',
+    '.twitch-embed-container:not([data-leaving])',
     '.yt-embed-container:not([data-leaving])',
   ].join(', ');
 
@@ -100,25 +138,57 @@
     }
   }
 
-  // ── Twitch embed (direct iframe — bypasses SDK visibility checks) ────────
-  // The Twitch Embed SDK performs aggressive "style visibility" checks that
-  // fail in OBS's offscreen CEF renderer. These checks run inside the
-  // cross-origin player.twitch.tv iframe, so we cannot patch them.
-  //
-  // Solution: bypass the SDK entirely and use a direct <iframe> to
-  // player.twitch.tv. This avoids the SDK's JavaScript visibility checks.
-  // Twitch is most likely to autoplay in OBS when the player starts muted.
-  // Audio is handled as a best-effort concern separately from video startup.
-  //
-  // After the iframe loads, we simulate a user click on the iframe to
-  // satisfy any remaining browser-level autoplay-gate that requires a
-  // "user gesture" (OBS CEF sometimes enforces this).
+  // ── Twitch embed ──────────────────────────────────────────────────────────
+  // Browser-window capture can use Twitch's player API, which lets rotation
+  // switch audio focus without reloading embeds. Keep a direct-iframe fallback
+  // for OBS/browser-source environments where the SDK can be unreliable.
   function buildTwitchEmbed(cell, slotIdx, stream, isFocused) {
     const leaving = Array.from(cell.querySelectorAll(LIVE_MEDIA));
     cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
 
     const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
+    const wrapperId = `twitch-target-${slotIdx}-${Date.now()}`;
+    const wrapper = document.createElement('div');
+    wrapper.id = wrapperId;
+    wrapper.className = 'twitch-embed-container';
+    wrapper.style.opacity = '0';
+    cell.appendChild(wrapper);
 
+    const isCurrentWrapper = () => document.getElementById(wrapperId) === wrapper;
+    const buildFallback = () => {
+      if (!isCurrentWrapper()) return;
+      wrapper.remove();
+      buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, twitchParent);
+    };
+
+    waitForTwitch(() => {
+      if (!isCurrentWrapper()) return;
+
+      try {
+        const player = new window.Twitch.Player(wrapperId, {
+          channel: stream.embedId,
+          parent: [twitchParent],
+          autoplay: true,
+          muted: false,
+          width: '100%',
+          height: '100%',
+        });
+
+        twitchPlayers[slotIdx] = { player, wrapper, slotIdx };
+        player.addEventListener(window.Twitch.Player.READY, () => {
+          applyTwitchAudioFocus(player, isFocused);
+          wrapper.style.transition = 'opacity 0.45s ease';
+          wrapper.style.opacity = '1';
+          leaving.forEach(el => fadeOut(el));
+        });
+        return;
+      } catch (_) {
+        buildFallback();
+      }
+    }, buildFallback);
+  }
+
+  function buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, twitchParent) {
     const iframe = document.createElement('iframe');
     iframe.allow = 'autoplay; fullscreen';
     iframe.allowFullscreen = true;
@@ -147,6 +217,14 @@
     }, { once: true });
 
     twitchPlayers[slotIdx] = { iframe, slotIdx };
+  }
+
+  function applyTwitchAudioFocus(player, isFocused) {
+    if (!player) return;
+    try {
+      player.setMuted(!isFocused);
+      if (isFocused) player.setVolume(1);
+    } catch (_) {}
   }
 
   // ── YouTube IFrame API player ─────────────────────────────────────────────
@@ -244,10 +322,21 @@
     if (!stream) return;
 
     if (stream.type === 'twitch') {
-      // Keep Twitch muted and avoid changing the iframe URL on focus changes.
-      // Reloading the iframe is more likely to re-trigger Twitch/OBS autoplay
-      // blocking than it is to recover audio.
-      return;
+      const entry = twitchPlayers[slotIdx];
+      if (entry && entry.player) {
+        applyTwitchAudioFocus(entry.player, isFocused);
+      } else if (entry && entry.iframe) {
+        // Direct iframe — update muted parameter in the URL.
+        // This reloads the player but is the only reliable way
+        // without the SDK JS API.
+        try {
+          const url = new URL(entry.iframe.src);
+          const nextMuted = isFocused ? 'false' : 'true';
+          if (url.searchParams.get('muted') === nextMuted) return;
+          url.searchParams.set('muted', nextMuted);
+          entry.iframe.src = url.toString();
+        } catch (_) {}
+      }
     } else {
       // YouTube: instant mute/unmute via API — no iframe rebuild needed
       const player = ytPlayers[slotIdx];
