@@ -15,8 +15,55 @@
     evtSource: null,
   };
 
-  const twitchPlayers = {}; // slotIdx → { player, iframe, slotIdx }
+  const twitchPlayers = {}; // slotIdx → { player, wrapper, iframe, slotIdx, streamId }
   const ytPlayers = {};     // slotIdx → YT.Player
+
+  // ── Twitch embed parking ──────────────────────────────────────────────────
+  // When a Twitch stream rotates off-screen we move its embed into a hidden
+  // container instead of destroying it. When the same channel rotates back
+  // in we re-attach the parked embed — no reload, no need to press play.
+  const parkedTwitchEmbeds = {}; // streamId → { player, wrapper, iframe }
+
+  function getPark() {
+    return document.getElementById('twitch-park');
+  }
+
+  function parkTwitchEmbed(slotIdx) {
+    const entry = twitchPlayers[slotIdx];
+    if (!entry) return;
+    const park = getPark();
+    if (!park) return;
+
+    const el = entry.wrapper || entry.iframe;
+    if (!el) return;
+
+    if (entry.player) {
+      try { entry.player.setMuted(true); } catch (_) {}
+    }
+
+    park.appendChild(el);
+    parkedTwitchEmbeds[entry.streamId] = {
+      player: entry.player || null,
+      wrapper: entry.wrapper || null,
+      iframe: entry.iframe || null,
+    };
+    delete twitchPlayers[slotIdx];
+  }
+
+  function unparkTwitchEmbed(streamId) {
+    const parked = parkedTwitchEmbeds[streamId];
+    if (!parked) return null;
+    delete parkedTwitchEmbeds[streamId];
+    return parked;
+  }
+
+  function destroyParkedEmbed(streamId) {
+    const parked = parkedTwitchEmbeds[streamId];
+    if (!parked) return;
+    const el = parked.wrapper || parked.iframe;
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    delete parkedTwitchEmbeds[streamId];
+  }
 
   // ── YouTube IFrame API readiness ──────────────────────────────────────────
   // The API script tag loads before this module, so onYouTubeIframeAPIReady
@@ -115,8 +162,8 @@
     const badge = cell.querySelector('.audio-badge');
     if (badge) badge.style.display = isFocused ? 'flex' : 'none';
 
-    // Drop Twitch reference — buildTwitchEmbed will set a new one
-    if (twitchPlayers[slotIdx]) delete twitchPlayers[slotIdx];
+    // Park outgoing Twitch embed so it can be reused later
+    parkTwitchEmbed(slotIdx);
 
     // Drop YT reference — schedule destroy so the player is still visible
     // during the crossfade (destroy() would remove its iframe immediately)
@@ -132,10 +179,41 @@
     }
 
     if (stream.type === 'twitch') {
-      buildTwitchEmbed(cell, slotIdx, stream, isFocused);
+      restoreOrBuildTwitchEmbed(cell, slotIdx, stream, isFocused);
     } else {
       buildYouTubePlayer(cell, slotIdx, stream, isFocused);
     }
+  }
+
+  // ── Twitch embed restore / build ───────────────────────────────────────────
+  // If the same Twitch channel was parked (rotated off-screen earlier), move
+  // it back into the cell without reloading — playback continues seamlessly.
+  function restoreOrBuildTwitchEmbed(cell, slotIdx, stream, isFocused) {
+    const parked = unparkTwitchEmbed(stream.id);
+    if (parked) {
+      const leaving = Array.from(cell.querySelectorAll(LIVE_MEDIA));
+      cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
+
+      const el = parked.wrapper || parked.iframe;
+      el.style.opacity = '0';
+      cell.appendChild(el);
+      el.style.transition = 'opacity 0.45s ease';
+      requestAnimationFrame(() => { el.style.opacity = '1'; });
+      leaving.forEach(old => fadeOut(old));
+
+      if (parked.player) {
+        applyTwitchAudioFocus(parked.player, isFocused);
+      }
+      twitchPlayers[slotIdx] = {
+        player: parked.player,
+        wrapper: parked.wrapper,
+        iframe: parked.iframe,
+        slotIdx,
+        streamId: stream.id,
+      };
+      return;
+    }
+    buildTwitchEmbed(cell, slotIdx, stream, isFocused);
   }
 
   // ── Twitch embed ──────────────────────────────────────────────────────────
@@ -174,7 +252,7 @@
           height: '100%',
         });
 
-        twitchPlayers[slotIdx] = { player, wrapper, slotIdx };
+        twitchPlayers[slotIdx] = { player, wrapper, iframe: null, slotIdx, streamId: stream.id };
         player.addEventListener(window.Twitch.Player.READY, () => {
           applyTwitchAudioFocus(player, isFocused);
           wrapper.style.transition = 'opacity 0.45s ease';
@@ -216,7 +294,7 @@
       }, 1000);
     }, { once: true });
 
-    twitchPlayers[slotIdx] = { iframe, slotIdx };
+    twitchPlayers[slotIdx] = { player: null, wrapper: null, iframe, slotIdx, streamId: stream.id };
   }
 
   function applyTwitchAudioFocus(player, isFocused) {
@@ -381,6 +459,14 @@
     applyDiff(newState, oldLayout);
     ms.prevSlots = [...newState.visibleSlots];
     ms.prevFocusedId = newState.focusedId;
+    pruneParkedEmbeds(newState);
+  }
+
+  function pruneParkedEmbeds(newState) {
+    const activeIds = new Set((newState.streams || []).map(s => s.id));
+    for (const id of Object.keys(parkedTwitchEmbeds)) {
+      if (!activeIds.has(id)) destroyParkedEmbed(id);
+    }
   }
 
   function handleSSE(msg) {
