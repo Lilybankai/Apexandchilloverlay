@@ -3,6 +3,11 @@ const fs = require('fs/promises');
 const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
+/** Optional: enables live titles, viewer counts, and YouTube likes on multistream overlay (server-side only). */
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+/** Optional: Twitch Helix for stream titles and viewer counts (likes are not exposed for live streams). */
+const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID || '';
+const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET || '';
 const SIMGRID_BASE = 'https://www.thesimgrid.com';
 const SIMGRID_KEY = 'PhEDyzEVPztV4yMJYsmQjKWy';
 const COMMUNITY_ID = 3846;
@@ -56,8 +61,15 @@ let multistreamState = {
   rotationEnabled: false,
   rotationIntervalSec: 30,
   twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
+  /** Per-stream metadata from YouTube/Twitch APIs (when env keys are set). */
+  streamStats: {},
+  /** Lower-third style ticker — text and timing from control panel. */
+  banner: { enabled: false, text: '', durationSec: 40 },
 };
 let msRotationTimer = null;
+let msStatsTimer = null;
+let twitchAccessToken = null;
+let twitchTokenExpiresAt = 0;
 
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
@@ -492,7 +504,14 @@ app.get('/api/state', (req, res) => res.json(serverState));
 
 // ── Lightweight health check (use this to verify proxy → Node is wired) ──────
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'apex-chill-overlay' });
+  res.json({
+    ok: true,
+    service: 'apex-chill-overlay',
+    multistreamMeta: {
+      youtubeApi: !!YOUTUBE_API_KEY,
+      twitchApi: !!(TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET),
+    },
+  });
 });
 
 // ── Overlay reports its state back (so controls stays in sync) ───────────────
@@ -732,6 +751,142 @@ function advanceRotation(ms) {
   }
 }
 
+async function getTwitchAccessToken() {
+  if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) return null;
+  if (twitchAccessToken && Date.now() < twitchTokenExpiresAt - 60_000) return twitchAccessToken;
+  const res = await fetch('https://id.twitch.tv/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: TWITCH_CLIENT_ID,
+      client_secret: TWITCH_CLIENT_SECRET,
+      grant_type: 'client_credentials',
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  twitchAccessToken = data.access_token || null;
+  twitchTokenExpiresAt = Date.now() + (Number(data.expires_in) || 3600) * 1000;
+  return twitchAccessToken;
+}
+
+async function fetchYouTubeVideoStats(videoId) {
+  if (!YOUTUBE_API_KEY) return null;
+  const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+  url.searchParams.set('part', 'snippet,statistics,liveStreamingDetails');
+  url.searchParams.set('id', videoId);
+  url.searchParams.set('key', YOUTUBE_API_KEY);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const item = data.items && data.items[0];
+  if (!item) return null;
+  const snippet = item.snippet || {};
+  const statistics = item.statistics || {};
+  const liveDet = item.liveStreamingDetails || {};
+  const live = snippet.liveBroadcastContent === 'live';
+  let viewers = null;
+  let viewerLabel = null;
+  if (live && liveDet.concurrentViewers != null) {
+    viewers = Number(liveDet.concurrentViewers);
+    viewerLabel = 'watching';
+  } else if (statistics.viewCount != null && statistics.viewCount !== '') {
+    viewers = Number(statistics.viewCount);
+    viewerLabel = 'views';
+  }
+  let likes = null;
+  if (statistics.likeCount != null && statistics.likeCount !== '') {
+    likes = Number(statistics.likeCount);
+  }
+  return {
+    title: snippet.title || null,
+    viewers,
+    viewerLabel,
+    likes,
+    source: 'youtube',
+  };
+}
+
+async function fetchTwitchStreamStats(login) {
+  const token = await getTwitchAccessToken();
+  if (!token || !TWITCH_CLIENT_ID) return null;
+  const headers = {
+    'Client-ID': TWITCH_CLIENT_ID,
+    Authorization: `Bearer ${token}`,
+  };
+  const ur = await fetch(
+    `https://api.twitch.tv/helix/users?login=${encodeURIComponent(login)}`,
+    { headers }
+  );
+  if (!ur.ok) return null;
+  const uj = await ur.json();
+  const user = uj.data && uj.data[0];
+  if (!user) return null;
+
+  const sr = await fetch(
+    `https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(user.id)}`,
+    { headers }
+  );
+  const sj = sr.ok ? await sr.json() : { data: [] };
+  const stream = sj.data && sj.data[0];
+  if (stream) {
+    return {
+      title: stream.title || null,
+      viewers: stream.viewer_count != null ? Number(stream.viewer_count) : null,
+      viewerLabel: 'watching',
+      likes: null,
+      source: 'twitch',
+      offline: false,
+    };
+  }
+
+  const cr = await fetch(
+    `https://api.twitch.tv/helix/channels?broadcaster_id=${encodeURIComponent(user.id)}`,
+    { headers }
+  );
+  const cj = cr.ok ? await cr.json() : { data: [] };
+  const ch = cj.data && cj.data[0];
+  return {
+    title: ch && ch.title ? ch.title : `${login} (offline)`,
+    viewers: null,
+    viewerLabel: null,
+    likes: null,
+    source: 'twitch',
+    offline: true,
+  };
+}
+
+async function rebuildMultistreamStats() {
+  const next = {};
+  for (const s of multistreamState.streams) {
+    try {
+      if (s.type === 'youtube' && YOUTUBE_API_KEY) {
+        const meta = await fetchYouTubeVideoStats(s.embedId);
+        if (meta) next[s.id] = { ...meta, fetchedAt: Date.now() };
+      } else if (s.type === 'twitch' && TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET) {
+        const meta = await fetchTwitchStreamStats(s.embedId);
+        if (meta) next[s.id] = { ...meta, fetchedAt: Date.now() };
+      }
+    } catch (_) {
+      /* keep slot empty until next poll */
+    }
+  }
+  multistreamState.streamStats = next;
+}
+
+async function refreshMultistreamStatsAndBroadcast() {
+  await rebuildMultistreamStats();
+  broadcast({ type: 'msCommand', cmd: 'statsRefresh', ...multistreamState });
+}
+
+function startMsStatsPolling() {
+  clearInterval(msStatsTimer);
+  msStatsTimer = setInterval(() => {
+    if (multistreamState.streams.length === 0) return;
+    void refreshMultistreamStatsAndBroadcast();
+  }, 45_000);
+}
+
 function startMsRotation() {
   clearInterval(msRotationTimer);
   msRotationTimer = null;
@@ -746,8 +901,9 @@ function startMsRotation() {
 // ── Multi-stream API ──────────────────────────────────────────────────────────
 app.get('/api/multistream/state', (_req, res) => res.json(multistreamState));
 
-app.post('/api/multistream/command', (req, res) => {
+app.post('/api/multistream/command', async (req, res) => {
   const { cmd, ...args } = req.body || {};
+  let statsDirty = false;
 
   if (cmd === 'addStream') {
     if (multistreamState.streams.length >= 8) {
@@ -762,6 +918,7 @@ app.post('/api/multistream/command', (req, res) => {
       multistreamState.focusedId = multistreamState.visibleSlots[0] ?? null;
     }
     startMsRotation(); // stream count may have crossed the >4 threshold
+    statsDirty = true;
   }
 
   if (cmd === 'removeStream') {
@@ -776,6 +933,7 @@ app.post('/api/multistream/command', (req, res) => {
       multistreamState.rotationOffset = 0;
     }
     startMsRotation(); // stream count may have dropped to ≤4
+    statsDirty = true;
   }
 
   if (cmd === 'setFocus') {
@@ -809,6 +967,18 @@ app.post('/api/multistream/command', (req, res) => {
     multistreamState.twitchParent = String(args.parent || 'localhost').trim();
   }
 
+  if (cmd === 'setBanner') {
+    if (args.enabled != null) multistreamState.banner.enabled = !!args.enabled;
+    if (typeof args.text === 'string') multistreamState.banner.text = args.text.slice(0, 800);
+    if (args.durationSec != null) {
+      multistreamState.banner.durationSec = Math.max(12, Math.min(180, Number(args.durationSec) || 40));
+    }
+  }
+
+  if (statsDirty) {
+    await rebuildMultistreamStats();
+  }
+
   broadcast({ type: 'msCommand', cmd, ...multistreamState });
   res.json({ ok: true, multistream: multistreamState });
 });
@@ -833,6 +1003,7 @@ app.use((err, _req, res, _next) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
+  startMsStatsPolling();
   console.log('\n  Apex & Chill Standings Overlay');
   console.log('  ────────────────────────────────────────');
   console.log(`  OBS source  →  http://localhost:${PORT}/overlay.html`);

@@ -125,6 +125,7 @@
 
     /* ── Stream list ── */
     #stream-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .stream-block { display: flex; flex-direction: column; gap: 0; }
     .stream-row {
       display: flex;
       align-items: center;
@@ -305,6 +306,65 @@
     .shortcut-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
     kbd { min-width: 32px; height: 24px; padding: 0 8px; border-radius: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); font-family: 'Orbitron', monospace; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
     .key-label { font-size: 13px; color: var(--dim); }
+
+    /* ── Scrolling ticker ── */
+    .ticker-hint { font-size: 11px; color: var(--dim); line-height: 1.45; margin-bottom: 12px; }
+    .banner-toggle-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .banner-toggle-label {
+      flex: 1;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+    .banner-check {
+      width: 18px; height: 18px; accent-color: var(--cyan); cursor: pointer;
+    }
+    .banner-textarea {
+      width: 100%;
+      min-height: 72px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      resize: vertical;
+      margin-bottom: 10px;
+    }
+    .banner-textarea:focus { outline: none; border-color: rgba(0,212,255,0.4); }
+    .banner-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .banner-dur-label { font-size: 12px; color: var(--dim); flex: 1; }
+    .banner-dur-input {
+      width: 72px;
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: 'Orbitron', monospace;
+      font-size: 13px;
+      text-align: center;
+    }
+    .banner-apply-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,212,255,0.45);
+      background: rgba(0,212,255,0.1);
+      color: var(--cyan);
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .banner-apply-btn:hover { background: rgba(0,212,255,0.18); }
+    .stream-meta-hint { font-size: 11px; color: var(--dim); margin-top: 5px; letter-spacing: 0.3px; }
+    .api-hint { font-size: 11px; color: var(--dim); line-height: 1.5; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -395,6 +455,23 @@
       </div>
     </div>
 
+    <!-- Scrolling ticker -->
+    <div class="section">
+      <div class="section-label">Scrolling ticker</div>
+      <p class="ticker-hint">Runs along the bottom of the multistream overlay. Use for CTAs (subscribe, follow, etc.).</p>
+      <div class="banner-toggle-row">
+        <span class="banner-toggle-label">Show ticker</span>
+        <input type="checkbox" class="banner-check" id="banner-enabled" onchange="pushBannerFromControls()">
+      </div>
+      <textarea class="banner-textarea" id="banner-text" placeholder="Like &amp; subscribe · Follow on Twitch · Catch the next race Sunday…" maxlength="800"></textarea>
+      <div class="banner-row">
+        <span class="banner-dur-label">Full scroll duration (seconds)</span>
+        <input type="number" class="banner-dur-input" id="banner-duration" min="12" max="180" value="40">
+      </div>
+      <button type="button" class="banner-apply-btn" onclick="pushBannerFromControls()">Apply ticker</button>
+      <p class="api-hint"><strong>Live titles &amp; stats:</strong> Set server env <code>YOUTUBE_API_KEY</code> for YouTube titles, views, and likes (when not hidden by the creator). Set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code> for Twitch titles and viewer counts. Twitch does not expose per-stream likes via API; YouTube likes come from the Data API.</p>
+    </div>
+
     <!-- Advanced -->
     <div class="section">
       <button class="advanced-toggle" onclick="toggleAdvanced()">⚙ Advanced ▾</button>
@@ -423,6 +500,8 @@
       rotationEnabled: false,
       rotationIntervalSec: 30,
       twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
+      streamStats: {},
+      banner: { enabled: false, text: '', durationSec: 40 },
     };
     let evtSource = null;
 
@@ -494,6 +573,13 @@
       cmd('setTwitchParent', { parent });
     }
 
+    function pushBannerFromControls() {
+      const enabled = document.getElementById('banner-enabled').checked;
+      const text = document.getElementById('banner-text').value;
+      const durationSec = Math.max(12, Math.min(180, Number(document.getElementById('banner-duration').value) || 40));
+      cmd('setBanner', { enabled, text, durationSec });
+    }
+
     function toggleAdvanced() {
       const el = document.getElementById('advanced-section');
       el.classList.toggle('open');
@@ -510,7 +596,24 @@
       renderStreamList();
       renderSlots();
       renderRotation();
+      renderBanner();
       document.getElementById('twitch-parent-input').value = state.twitchParent || 'localhost';
+    }
+
+    function fmtStatNum(n) {
+      if (n == null || Number.isNaN(Number(n))) return '';
+      const v = Number(n);
+      if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+      if (v >= 1e4) return `${(v / 1e3).toFixed(1)}K`;
+      if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+      return String(v);
+    }
+
+    function renderBanner() {
+      const b = state.banner || { enabled: false, text: '', durationSec: 40 };
+      document.getElementById('banner-enabled').checked = !!b.enabled;
+      document.getElementById('banner-text').value = b.text || '';
+      document.getElementById('banner-duration').value = b.durationSec || 40;
     }
 
     function renderLayout() {
@@ -532,13 +635,24 @@
 
       list.innerHTML = state.streams.map(stream => {
         const isVisible = state.visibleSlots.includes(stream.id);
-        return `
-          <div class="stream-row" data-id="${stream.id}">
+        const st = state.streamStats && state.streamStats[stream.id];
+        const parts = [];
+        if (st) {
+          if (st.viewers != null && st.viewerLabel) {
+            parts.push(st.viewerLabel === 'views' ? `${fmtStatNum(st.viewers)} views` : `${fmtStatNum(st.viewers)} watching`);
+          }
+          if (stream.type === 'youtube' && st.likes != null) parts.push(`${fmtStatNum(st.likes)} likes`);
+          if (st.offline) parts.push('offline');
+        }
+        const metaLine = parts.length ? `<div class="stream-meta-hint">${parts.join(' · ')}</div>` : '';
+        return `<div class="stream-block" data-id="${stream.id}">
+          <div class="stream-row">
             <span class="stream-badge ${stream.type}">${stream.type === 'youtube' ? 'YT' : 'TW'}</span>
             <span class="stream-label-text" title="${stream.label}">${stream.label}</span>
             <span class="stream-visible-dot ${isVisible ? 'visible' : ''}" title="In grid"></span>
             <button class="stream-remove-btn" onclick="removeStream('${stream.id}')">Remove</button>
-          </div>`;
+          </div>${metaLine}
+        </div>`;
       }).join('');
     }
 

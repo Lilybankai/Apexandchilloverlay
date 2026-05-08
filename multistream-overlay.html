@@ -229,6 +229,72 @@
       z-index: 10;
     }
 
+    /* ── Stream meta (titles / stats from API) ───────────────────────────────── */
+    .stream-meta-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 8;
+      padding: 5px 8px 12px;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+      pointer-events: none;
+    }
+    .stream-meta-bar .meta-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.25;
+      max-height: 2.6em;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .stream-meta-bar .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      margin-top: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+    .stream-meta-bar .meta-row span:empty { display: none; }
+
+    /* ── Bottom scrolling ticker (control panel) ─────────────────────────────── */
+    #ms-ticker {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 48px;
+      z-index: 30;
+      overflow: hidden;
+      background: linear-gradient(90deg, rgba(4, 12, 28, 0.94), rgba(20, 47, 105, 0.9), rgba(4, 12, 28, 0.94));
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      display: none;
+      align-items: center;
+    }
+    #ms-ticker[data-visible='1'] { display: flex; }
+    .ms-ticker-inner {
+      display: inline-flex;
+      white-space: nowrap;
+      will-change: transform;
+      animation: ms-ticker-scroll var(--ms-ticker-duration, 40s) linear infinite;
+    }
+    @keyframes ms-ticker-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .ms-ticker-seg {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: #edf4ff;
+      letter-spacing: 0.6px;
+      padding-right: 96px;
+    }
+
     /* Stream label */
     .stream-label {
       position: absolute;
@@ -372,6 +438,12 @@
           </div>
           <div class="stream-label"></div>
         </div>
+      </div>
+    </div>
+
+    <div id="ms-ticker" class="ms-ticker" data-visible="0" aria-hidden="true">
+      <div class="ms-ticker-inner">
+        <span class="ms-ticker-seg"></span><span class="ms-ticker-seg"></span>
       </div>
     </div>
 

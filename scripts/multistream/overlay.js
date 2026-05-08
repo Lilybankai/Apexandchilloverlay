@@ -9,6 +9,8 @@
       rotationEnabled: false,
       rotationIntervalSec: 30,
       twitchParent: 'localhost',
+      streamStats: {},
+      banner: { enabled: false, text: '', durationSec: 40 },
     },
     prevSlots: [null, null, null, null],
     prevFocusedId: null,
@@ -124,6 +126,95 @@
     return ms.state.streams.find(s => s.id === id) ?? null;
   }
 
+  function fmtNum(n) {
+    if (n == null || Number.isNaN(Number(n))) return '';
+    const v = Number(n);
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e4) return `${(v / 1e3).toFixed(1)}K`;
+    if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+    return String(v);
+  }
+
+  function updateMetaForSlot(slotIdx, streamId, state) {
+    const cell = document.getElementById(`cell-${slotIdx}`);
+    if (!cell) return;
+
+    if (!streamId) {
+      const bar = cell.querySelector('.stream-meta-bar');
+      if (bar) bar.style.display = 'none';
+      const label = cell.querySelector('.stream-label');
+      if (label) {
+        label.style.display = '';
+        label.textContent = '';
+      }
+      return;
+    }
+
+    let bar = cell.querySelector('.stream-meta-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'stream-meta-bar';
+      bar.innerHTML = '<div class="meta-title"></div><div class="meta-row"><span class="meta-views"></span><span class="meta-likes"></span></div>';
+      const idx = cell.querySelector('.slot-index');
+      if (idx && idx.nextSibling) cell.insertBefore(bar, idx.nextSibling);
+      else cell.insertBefore(bar, cell.firstChild);
+    }
+    bar.style.display = '';
+
+    const stream = getStreamById(streamId);
+    const stats = (state.streamStats && state.streamStats[streamId]) || null;
+
+    const titleEl = bar.querySelector('.meta-title');
+    const viewsEl = bar.querySelector('.meta-views');
+    const likesEl = bar.querySelector('.meta-likes');
+    const bottomLabel = cell.querySelector('.stream-label');
+
+    const title = (stats && stats.title) || (stream && stream.label) || '';
+    if (titleEl) titleEl.textContent = title;
+
+    if (stats && stats.viewers != null && stats.viewerLabel) {
+      viewsEl.textContent = stats.viewerLabel === 'views'
+        ? `${fmtNum(stats.viewers)} views`
+        : `${fmtNum(stats.viewers)} watching`;
+    } else if (stats && stats.offline) {
+      viewsEl.textContent = 'Offline';
+    } else {
+      viewsEl.textContent = '';
+    }
+
+    if (stream && stream.type === 'youtube' && stats && stats.likes != null) {
+      likesEl.textContent = `${fmtNum(stats.likes)} likes`;
+    } else {
+      likesEl.textContent = '';
+    }
+
+    if (bottomLabel) {
+      bottomLabel.style.display = 'none';
+    }
+  }
+
+  function updateBanner(banner) {
+    const el = document.getElementById('ms-ticker');
+    if (!el) return;
+    const b = banner || { enabled: false, text: '', durationSec: 40 };
+    const on = !!(b.enabled && String(b.text || '').trim());
+    el.dataset.visible = on ? '1' : '0';
+    el.setAttribute('aria-hidden', on ? 'false' : 'true');
+    const dur = Math.max(12, Math.min(180, Number(b.durationSec) || 40));
+    el.style.setProperty('--ms-ticker-duration', `${dur}s`);
+    const chunk = String(b.text || '').trim()
+      ? `${String(b.text).trim()}     •     `
+      : '';
+    el.querySelectorAll('.ms-ticker-seg').forEach(s => { s.textContent = chunk; });
+  }
+
+  function refreshMetaAndBanner() {
+    for (let i = 0; i < 4; i++) {
+      updateMetaForSlot(i, ms.state.visibleSlots[i] ?? null, ms.state);
+    }
+    updateBanner(ms.state.banner);
+  }
+
   function updateLayout(layout) {
     const overlay = document.getElementById('multistream-overlay');
     if (overlay) overlay.dataset.layout = layout;
@@ -175,6 +266,7 @@
 
     if (!stream) {
       cell.querySelectorAll(LIVE_MEDIA).forEach(el => fadeOut(el));
+      updateMetaForSlot(slotIdx, null, ms.state);
       return;
     }
 
@@ -183,6 +275,7 @@
     } else {
       buildYouTubePlayer(cell, slotIdx, stream, isFocused);
     }
+    updateMetaForSlot(slotIdx, streamId, ms.state);
   }
 
   // ── Twitch embed restore / build ───────────────────────────────────────────
@@ -460,6 +553,7 @@
     ms.prevSlots = [...newState.visibleSlots];
     ms.prevFocusedId = newState.focusedId;
     pruneParkedEmbeds(newState);
+    refreshMetaAndBanner();
   }
 
   function pruneParkedEmbeds(newState) {
@@ -501,6 +595,7 @@
     renderAll(ms.state);
     ms.prevSlots = [...ms.state.visibleSlots];
     ms.prevFocusedId = ms.state.focusedId;
+    refreshMetaAndBanner();
     connectSSE();
   }
 
