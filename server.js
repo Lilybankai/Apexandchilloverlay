@@ -52,7 +52,7 @@ let multistreamState = {
   visibleSlots: [null, null, null, null], // stream ids (or null) for each of the 4 grid slots
   rotationOffset: 0,                      // index cursor for rotation
   focusedId: null,                        // stream id with audio; null = mute all
-  layout: 'grid',                         // 'grid' | 'pip'
+  layout: 'grid',                         // 'grid' | 'pip' | 'dual'
   rotationEnabled: false,
   rotationIntervalSec: 30,
   twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
@@ -788,7 +788,7 @@ app.post('/api/multistream/command', (req, res) => {
   }
 
   if (cmd === 'setLayout') {
-    if (args.layout === 'grid' || args.layout === 'pip') {
+    if (args.layout === 'grid' || args.layout === 'pip' || args.layout === 'dual') {
       multistreamState.layout = args.layout;
     }
   }

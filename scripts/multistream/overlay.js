@@ -5,7 +5,7 @@
       visibleSlots: [null, null, null, null],
       rotationOffset: 0,
       focusedId: null,
-      layout: 'grid',
+      layout: 'grid', // 'grid' | 'pip' | 'dual'
       rotationEnabled: false,
       rotationIntervalSec: 30,
       twitchParent: 'localhost',
