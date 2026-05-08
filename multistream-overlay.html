@@ -166,11 +166,21 @@
       border: 1px solid rgba(255, 255, 255, 0.06);
     }
 
-    /* ── DUAL LAYOUT (2×1 side-by-side, 960×958 each) ───────────────────────── */
+    /* ── DUAL LAYOUT (2 stacked, 1920×479 each — full width, better on tall/narrow viewports) ─ */
     #multistream-overlay[data-layout='dual'] #stream-grid {
       display: grid;
-      grid-template-columns: 960px 960px;
-      grid-template-rows: 958px;
+      grid-template-columns: 1920px;
+      grid-template-rows: 479px 479px;
+    }
+
+    #multistream-overlay[data-layout='dual'] .stream-cell:nth-child(1) {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #multistream-overlay[data-layout='dual'] .stream-cell:nth-child(2) {
+      grid-column: 1;
+      grid-row: 2;
     }
 
     #multistream-overlay[data-layout='dual'] .stream-cell {
