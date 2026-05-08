@@ -68,7 +68,7 @@
     .section-count { font-size: 11px; color: var(--dim); }
 
     /* ── Layout toggle ── */
-    .layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .layout-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .layout-btn {
       padding: 16px;
       border-radius: 10px;
@@ -172,6 +172,7 @@
 
     /* ── Visible slots / focus ── */
     .slots-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .slots-grid.dual-layout .slot-card:nth-child(n + 3) { display: none; }
     .slot-card {
       padding: 14px;
       border-radius: 10px;
@@ -328,6 +329,10 @@
           <span class="layout-icon">⊞</span>
           Grid
         </button>
+        <button class="layout-btn" id="btn-layout-dual" onclick="setLayout('dual')">
+          <span class="layout-icon">▮▮</span>
+          2-Card
+        </button>
         <button class="layout-btn" id="btn-layout-pip" onclick="setLayout('pip')">
           <span class="layout-icon">▣</span>
           PiP
@@ -352,7 +357,7 @@
     <!-- Visible Slots / Focus -->
     <div class="section">
       <div class="section-label">Visible Slots — Click to Focus Audio</div>
-      <div class="slots-grid" id="slots-grid">
+      <div class="slots-grid" id="slots-grid" aria-label="Visible stream slots">
         <div class="slot-card" id="slot-card-0">
           <div class="slot-card-num">SLOT 01</div>
           <div class="slot-card-name" id="slot-name-0">—</div>
@@ -510,7 +515,9 @@
 
     function renderLayout() {
       document.getElementById('btn-layout-grid').classList.toggle('active', state.layout === 'grid');
+      document.getElementById('btn-layout-dual').classList.toggle('active', state.layout === 'dual');
       document.getElementById('btn-layout-pip').classList.toggle('active', state.layout === 'pip');
+      document.getElementById('slots-grid').classList.toggle('dual-layout', state.layout === 'dual');
     }
 
     function renderStreamList() {

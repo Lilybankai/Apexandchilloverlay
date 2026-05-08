@@ -166,6 +166,24 @@
       border: 1px solid rgba(255, 255, 255, 0.06);
     }
 
+    /* ── DUAL LAYOUT (2×1 side-by-side, 960×958 each) ───────────────────────── */
+    #multistream-overlay[data-layout='dual'] #stream-grid {
+      display: grid;
+      grid-template-columns: 960px 960px;
+      grid-template-rows: 958px;
+    }
+
+    #multistream-overlay[data-layout='dual'] .stream-cell {
+      position: relative;
+      overflow: hidden;
+      background: #060614;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    #multistream-overlay[data-layout='dual'] .stream-cell:nth-child(n + 3) {
+      display: none;
+    }
+
     /* ── PiP LAYOUT (focused 1280×958 left, 3×(640×319) right) ─────────────── */
     #multistream-overlay[data-layout='pip'] #stream-grid {
       display: grid;
