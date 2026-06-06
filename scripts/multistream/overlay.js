@@ -320,11 +320,22 @@
   // Browser-window capture can use Twitch's player API, which lets rotation
   // switch audio focus without reloading embeds. Keep a direct-iframe fallback
   // for OBS/browser-source environments where the SDK can be unreliable.
+
+  // Twitch requires the embedding page's domain(s) as `parent`. Include the
+  // configured domain AND the real host so the same overlay works on the hosted
+  // domain and on localhost in OBS with no settings change.
+  function twitchParents() {
+    const list = [ms.state.twitchParent, location.hostname, 'localhost']
+      .map(p => String(p || '').trim())
+      .filter(Boolean);
+    return [...new Set(list)];
+  }
+
   function buildTwitchEmbed(cell, slotIdx, stream, isFocused) {
     const leaving = Array.from(cell.querySelectorAll(LIVE_MEDIA));
     cell.querySelectorAll('[data-leaving]').forEach(el => el.remove());
 
-    const twitchParent = ms.state.twitchParent || location.hostname || 'localhost';
+    const parents = twitchParents();
     const wrapperId = `twitch-target-${slotIdx}-${Date.now()}`;
     const wrapper = document.createElement('div');
     wrapper.id = wrapperId;
@@ -336,7 +347,7 @@
     const buildFallback = () => {
       if (!isCurrentWrapper()) return;
       wrapper.remove();
-      buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, twitchParent);
+      buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, parents);
     };
 
     waitForTwitch(() => {
@@ -345,7 +356,7 @@
       try {
         const player = new window.Twitch.Player(wrapperId, {
           channel: stream.embedId,
-          parent: [twitchParent],
+          parent: parents,
           autoplay: true,
           muted: false,
           width: '100%',
@@ -366,12 +377,13 @@
     }, buildFallback);
   }
 
-  function buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, twitchParent) {
+  function buildTwitchIframeFallback(cell, slotIdx, stream, isFocused, leaving, parents) {
+    const parentList = Array.isArray(parents) ? parents : [parents];
     const iframe = document.createElement('iframe');
     iframe.allow = 'autoplay; fullscreen';
     iframe.allowFullscreen = true;
     iframe.src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.embedId)}`
-      + `&parent=${encodeURIComponent(twitchParent)}`
+      + parentList.map(p => `&parent=${encodeURIComponent(p)}`).join('')
       + '&autoplay=true'
       + '&muted=true';
     iframe.style.opacity = '0';
