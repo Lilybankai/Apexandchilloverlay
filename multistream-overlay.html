@@ -157,7 +157,12 @@
     }
 
     /* When the LMU tower is active, reserve its strip so streams shift right and
-       shrink to fit rather than being covered. Scoped overrides win on specificity. */
+       shrink to fit rather than being covered. Two independent triggers:
+         (1) data-lmu='1' set by overlay.js, and
+         (2) the tower's own data-visible='1' via :has() — works even if overlay.js
+             is an older/cached build, since every version sets data-visible.
+       The :has() rules live in their own blocks so engines without :has() support
+       drop only those and keep the data-lmu path. Scoped selectors win on specificity. */
     #multistream-overlay[data-lmu='1'] #stream-grid {
       margin-left: var(--lmu-w);
       width: calc(1920px - var(--lmu-w));
@@ -167,6 +172,17 @@
       grid-template-columns: 1fr 1fr;
     }
     #multistream-overlay[data-lmu='1'][data-layout='pip'] #stream-grid {
+      grid-template-columns: 2fr 1fr;
+    }
+    #multistream-overlay:has(#lmu-tower[data-visible='1']) #stream-grid {
+      margin-left: var(--lmu-w);
+      width: calc(1920px - var(--lmu-w));
+    }
+    #multistream-overlay[data-layout='grid']:has(#lmu-tower[data-visible='1']) #stream-grid,
+    #multistream-overlay[data-layout='dual']:has(#lmu-tower[data-visible='1']) #stream-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    #multistream-overlay[data-layout='pip']:has(#lmu-tower[data-visible='1']) #stream-grid {
       grid-template-columns: 2fr 1fr;
     }
 
