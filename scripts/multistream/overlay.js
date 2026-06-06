@@ -11,10 +11,17 @@
       twitchParent: 'localhost',
       streamStats: {},
       banner: { enabled: false, text: '', durationSec: 40 },
+      lmuTiming: { enabled: false },
     },
     prevSlots: [null, null, null, null],
     prevFocusedId: null,
     evtSource: null,
+    // ── LMU live timing working state ──
+    lmuTimer: null,
+    lmuBattleSet: new Set(),
+    lmuCalloutQueue: [],
+    lmuCalloutActive: false,
+    lmuCalloutTimer: null,
   };
 
   const twitchPlayers = {}; // slotIdx → { player, wrapper, iframe, slotIdx, streamId }
@@ -554,6 +561,7 @@
     ms.prevFocusedId = newState.focusedId;
     pruneParkedEmbeds(newState);
     refreshMetaAndBanner();
+    syncLmuTiming();
   }
 
   function pruneParkedEmbeds(newState) {
@@ -563,7 +571,207 @@
     }
   }
 
+  // ── LMU live timing tower ───────────────────────────────────────────────────
+  // Armed via the multistream controls toggle, then fully automatic: polls the
+  // server's /api/lmu/live (which reads the local game API) once a second, shows
+  // the tower only while a session is live, and renders overtake/battle graphics
+  // pushed over SSE. Hidden + idle when disarmed or the game/session is offline.
+
+  function fmtClock(sec) {
+    if (sec == null) return '';
+    const s = Math.max(0, Math.round(sec));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+
+  function fmtLap(sec) {
+    if (sec == null) return '--';
+    if (sec >= 60) {
+      const m = Math.floor(sec / 60);
+      return `${m}:${(sec % 60).toFixed(3).padStart(6, '0')}`;
+    }
+    return sec.toFixed(3);
+  }
+
+  function fmtGap(gap) {
+    if (!gap) return { text: '', leader: true };
+    if (gap.laps != null) return { text: `+${gap.laps}L`, leader: false };
+    if (gap.sec != null) return { text: `+${gap.sec.toFixed(3)}`, leader: false };
+    return { text: '', leader: true };
+  }
+
+  function renderSession(si) {
+    const el = document.getElementById('lmu-session');
+    if (!el) return;
+    if (!si) { el.innerHTML = ''; return; }
+    const flag = String(si.flag || 'GREEN').toLowerCase();
+    let flagCls = 'green';
+    if (flag.includes('yellow') || flag.includes('fcy') || flag.includes('caution')) flagCls = 'yellow';
+    else if (flag.includes('safety') || flag.includes('sc')) flagCls = 'sc';
+    else if (flag.includes('red')) flagCls = 'red';
+    const time = si.timeRemaining != null ? fmtClock(si.timeRemaining) : '';
+    const temps = [];
+    if (si.trackTemp != null) temps.push(`Trk ${Math.round(si.trackTemp)}°`);
+    if (si.airTemp != null) temps.push(`Air ${Math.round(si.airTemp)}°`);
+    el.innerHTML =
+      `<span class="ls-type">${si.type || 'SESSION'}</span>`
+      + `<span class="ls-flag ${flagCls}"></span>`
+      + (time ? `<span>${time}</span>` : '')
+      + (temps.length ? `<span class="ls-dim">${temps.join('  ')}</span>` : '');
+  }
+
+  function renderRow(row, entry, className) {
+    row.dataset.cls = className;
+    row.classList.toggle('battle', ms.lmuBattleSet.has(entry.num));
+    const gap = fmtGap(entry.gapLeader);
+    const secs = entry.sectors.map(s => `<span class="lmu-sec ${s.color || ''}"></span>`).join('');
+    const right = entry.inPit
+      ? '<span class="lmu-pit">PIT</span>'
+      : `<span class="lmu-gap ${gap.leader ? 'leader' : ''}">${gap.leader ? '—' : gap.text}</span>`;
+    row.innerHTML =
+      `<span class="lmu-pos">${entry.classPos}</span>`
+      + `<span class="lmu-num">${entry.num}</span>`
+      + `<span class="lmu-drv">${entry.driver}</span>`
+      + `<span class="lmu-sectors">${secs}</span>`
+      + `<span class="lmu-last">${fmtLap(entry.lastLap)}</span>`
+      + right;
+  }
+
+  function renderTower(model) {
+    renderSession(model.sessionInfo);
+    const wrap = document.getElementById('lmu-classes');
+    if (!wrap) return;
+
+    const seenClasses = new Set();
+    model.classes.forEach(cls => {
+      seenClasses.add(cls.name);
+      let block = wrap.querySelector(`.lmu-class[data-cls="${cls.name}"]`);
+      if (!block) {
+        block = document.createElement('div');
+        block.className = 'lmu-class';
+        block.dataset.cls = cls.name;
+        block.innerHTML = `<div class="lmu-class-hdr">${cls.name}</div><div class="lmu-rows"></div>`;
+        wrap.appendChild(block);
+      }
+      const rowsEl = block.querySelector('.lmu-rows');
+      const seenNums = new Set();
+      cls.entries.forEach(entry => {
+        seenNums.add(entry.num);
+        let row = rowsEl.querySelector(`.lmu-row[data-num="${entry.num}"]`);
+        if (!row) {
+          row = document.createElement('div');
+          row.className = 'lmu-row';
+          row.dataset.num = entry.num;
+          rowsEl.appendChild(row);
+        }
+        renderRow(row, entry, cls.name);
+        rowsEl.appendChild(row); // re-append in finishing order so rows stay sorted
+      });
+      // Drop cars no longer in this class
+      rowsEl.querySelectorAll('.lmu-row').forEach(r => {
+        if (!seenNums.has(r.dataset.num)) r.remove();
+      });
+    });
+    // Drop classes no longer present
+    wrap.querySelectorAll('.lmu-class').forEach(b => {
+      if (!seenClasses.has(b.dataset.cls)) b.remove();
+    });
+
+    // Auto-condense rows if the full field overflows the tower height
+    const tower = document.getElementById('lmu-tower');
+    tower.classList.remove('compact');
+    if (tower.scrollHeight > tower.clientHeight) tower.classList.add('compact');
+  }
+
+  async function pollLmu() {
+    try {
+      const res = await fetch('/api/lmu/live');
+      const model = await res.json();
+      const tower = document.getElementById('lmu-tower');
+      if (!tower) return;
+      if (!model || model.offline || !model.sessionActive) {
+        tower.dataset.visible = '0';
+        tower.setAttribute('aria-hidden', 'true');
+        return;
+      }
+      tower.dataset.visible = '1';
+      tower.setAttribute('aria-hidden', 'false');
+      renderTower(model);
+    } catch (_) {
+      /* transient fetch error — keep last render */
+    }
+  }
+
+  function startLmuTiming() {
+    if (ms.lmuTimer) return;
+    pollLmu();
+    ms.lmuTimer = setInterval(pollLmu, 1000);
+  }
+
+  function stopLmuTiming() {
+    clearInterval(ms.lmuTimer);
+    ms.lmuTimer = null;
+    const tower = document.getElementById('lmu-tower');
+    if (tower) { tower.dataset.visible = '0'; tower.setAttribute('aria-hidden', 'true'); }
+    hideCallout();
+    ms.lmuCalloutQueue = [];
+    ms.lmuCalloutActive = false;
+    ms.lmuBattleSet = new Set();
+  }
+
+  function syncLmuTiming() {
+    if (ms.state.lmuTiming && ms.state.lmuTiming.enabled) startLmuTiming();
+    else stopLmuTiming();
+  }
+
+  function applyBattles(msg) {
+    const set = new Set();
+    (msg.battles || []).forEach(b => { set.add(b.behind); set.add(b.ahead); });
+    ms.lmuBattleSet = set;
+    document.querySelectorAll('#lmu-classes .lmu-row').forEach(row => {
+      row.classList.toggle('battle', set.has(row.dataset.num));
+    });
+  }
+
+  function enqueueCallout(msg) {
+    ms.lmuCalloutQueue.push(msg);
+    if (!ms.lmuCalloutActive) nextCallout();
+  }
+
+  function hideCallout() {
+    clearTimeout(ms.lmuCalloutTimer);
+    const el = document.getElementById('lmu-callout');
+    if (el) el.dataset.visible = '0';
+  }
+
+  function nextCallout() {
+    const msg = ms.lmuCalloutQueue.shift();
+    if (!msg) { ms.lmuCalloutActive = false; return; }
+    ms.lmuCalloutActive = true;
+    const el = document.getElementById('lmu-callout');
+    if (!el) { ms.lmuCalloutActive = false; return; }
+    el.querySelector('.co-move').textContent = `P${msg.fromPos} → P${msg.toPos}`;
+    el.querySelector('.co-name').textContent = msg.driver || '';
+    el.querySelector('.co-cls').textContent = msg.className || '';
+    el.dataset.visible = '1';
+    clearTimeout(ms.lmuCalloutTimer);
+    ms.lmuCalloutTimer = setTimeout(() => {
+      el.dataset.visible = '0';
+      setTimeout(nextCallout, 500);
+    }, 6000);
+  }
+
   function handleSSE(msg) {
+    if (msg.type === 'lmuOvertake') {
+      if (ms.state.lmuTiming && ms.state.lmuTiming.enabled) enqueueCallout(msg);
+      return;
+    }
+    if (msg.type === 'lmuBattle') {
+      if (ms.state.lmuTiming && ms.state.lmuTiming.enabled) applyBattles(msg);
+      return;
+    }
     if (msg.type === 'state' && msg.multistream) {
       // SSE pushes full state on connect. Use diff-based update so we
       // don't tear down in-progress embeds that init() already started.
@@ -596,6 +804,7 @@
     ms.prevSlots = [...ms.state.visibleSlots];
     ms.prevFocusedId = ms.state.focusedId;
     refreshMetaAndBanner();
+    syncLmuTiming();
     connectSSE();
   }
 

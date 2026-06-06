@@ -455,6 +455,13 @@
       </div>
     </div>
 
+    <!-- LMU Live Timing -->
+    <div class="section">
+      <div class="section-label">LMU Live Timing</div>
+      <p class="ticker-hint">Overlays a live timing tower (full field — Hypercar &amp; LMGT3) down the left of the multistream, with automatic overtake &amp; battle graphics. Reads the Le Mans Ultimate game API on the streaming PC. <strong>Arm it once before the race — everything after is automatic</strong> (it shows when a session is live and hides when it ends). Leave OFF for GT7 streams.</p>
+      <button class="rotation-toggle" id="lmu-timing-toggle" style="width:100%" onclick="toggleLmuTiming()">LMU Timing Off</button>
+    </div>
+
     <!-- Scrolling ticker -->
     <div class="section">
       <div class="section-label">Scrolling ticker</div>
@@ -502,6 +509,7 @@
       twitchParent: 'ng008o88o0wo0k4c0w840skk.lilybankhost.co.uk',
       streamStats: {},
       banner: { enabled: false, text: '', durationSec: 40 },
+      lmuTiming: { enabled: false },
     };
     let evtSource = null;
 
@@ -585,6 +593,10 @@
       el.classList.toggle('open');
     }
 
+    function toggleLmuTiming() {
+      cmd('setLmuTiming', { enabled: !(state.lmuTiming && state.lmuTiming.enabled) });
+    }
+
     // ── State & render ────────────────────────────────────────────────────────
     function applyState(newState) {
       Object.assign(state, newState);
@@ -597,7 +609,16 @@
       renderSlots();
       renderRotation();
       renderBanner();
+      renderLmuTiming();
       document.getElementById('twitch-parent-input').value = state.twitchParent || 'localhost';
+    }
+
+    function renderLmuTiming() {
+      const btn = document.getElementById('lmu-timing-toggle');
+      if (!btn) return;
+      const on = !!(state.lmuTiming && state.lmuTiming.enabled);
+      btn.textContent = on ? 'LMU Timing On' : 'LMU Timing Off';
+      btn.classList.toggle('active', on);
     }
 
     function fmtStatNum(n) {

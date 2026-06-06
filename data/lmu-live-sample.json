@@ -1,0 +1,39 @@
+{
+  "offline": false,
+  "sessionActive": true,
+  "sessionInfo": {
+    "type": "RACE1",
+    "timeRemaining": 19320,
+    "flag": "GREEN",
+    "trackTemp": 31.4,
+    "airTemp": 24.1,
+    "totalLaps": null,
+    "currentLap": 42
+  },
+  "classes": [
+    {
+      "name": "Hypercar",
+      "entries": [
+        { "pos": 1, "classPos": 1, "num": "7", "driver": "Kamui Kobayashi", "team": "Toyota Gazoo Racing", "car": "Toyota GR010", "gapLeader": null, "gapAhead": null, "lastLap": 213.842, "bestLap": 212.118, "sectors": [{ "time": 28.102, "color": "purple" }, { "time": 95.640, "color": "green" }, { "time": 90.100, "color": "yellow" }], "inPit": false, "pitCount": 3 },
+        { "pos": 2, "classPos": 2, "num": "8", "driver": "Sébastien Buemi", "team": "Toyota Gazoo Racing", "car": "Toyota GR010", "gapLeader": { "sec": 0.612 }, "gapAhead": { "sec": 0.612 }, "lastLap": 213.998, "bestLap": 212.540, "sectors": [{ "time": 28.310, "color": "green" }, { "time": 95.880, "color": "yellow" }, { "time": 89.808, "color": "purple" }], "inPit": false, "pitCount": 3 },
+        { "pos": 3, "classPos": 3, "num": "6", "driver": "Kevin Estre", "team": "Porsche Penske", "car": "Porsche 963", "gapLeader": { "sec": 12.430 }, "gapAhead": { "sec": 11.818 }, "lastLap": 214.402, "bestLap": 213.001, "sectors": [{ "time": 28.502, "color": "yellow" }, { "time": 96.100, "color": "yellow" }, { "time": 89.800, "color": "green" }], "inPit": false, "pitCount": 3 },
+        { "pos": 4, "classPos": 4, "num": "51", "driver": "Antonio Giovinazzi", "team": "Ferrari AF Corse", "car": "Ferrari 499P", "gapLeader": { "sec": 13.044 }, "gapAhead": { "sec": 0.614 }, "lastLap": 214.500, "bestLap": 213.220, "sectors": [{ "time": 28.640, "color": "yellow" }, { "time": 96.060, "color": "yellow" }, { "time": 89.800, "color": "yellow" }], "inPit": false, "pitCount": 3 },
+        { "pos": 5, "classPos": 5, "num": "2", "driver": "Earl Bamber", "team": "Cadillac Racing", "car": "Cadillac V-Series.R", "gapLeader": { "sec": 28.900 }, "gapAhead": { "sec": 15.856 }, "lastLap": 215.110, "bestLap": 213.880, "sectors": [{ "time": 28.700, "color": "yellow" }, { "time": 96.310, "color": "yellow" }, { "time": 90.100, "color": "yellow" }], "inPit": true, "pitCount": 4 },
+        { "pos": 6, "classPos": 6, "num": "15", "driver": "Dries Vanthoor", "team": "BMW M Team WRT", "car": "BMW M Hybrid V8", "gapLeader": { "laps": 1 }, "gapAhead": { "laps": 1 }, "lastLap": 216.240, "bestLap": 214.700, "sectors": [{ "time": 29.010, "color": "yellow" }, { "time": 96.900, "color": "yellow" }, { "time": 90.330, "color": "yellow" }], "inPit": false, "pitCount": 3 }
+      ]
+    },
+    {
+      "name": "LMGT3",
+      "entries": [
+        { "pos": 7, "classPos": 1, "num": "92", "driver": "Aliaksandr Malykhin", "team": "Manthey PureRxcing", "car": "Porsche 911 GT3 R", "gapLeader": null, "gapAhead": null, "lastLap": 229.880, "bestLap": 228.440, "sectors": [{ "time": 31.220, "color": "purple" }, { "time": 102.660, "color": "green" }, { "time": 96.000, "color": "yellow" }], "inPit": false, "pitCount": 3 },
+        { "pos": 8, "classPos": 2, "num": "31", "driver": "Augusto Farfus", "team": "The Bend Team WRT", "car": "BMW M4 GT3", "gapLeader": { "sec": 0.840 }, "gapAhead": { "sec": 0.840 }, "lastLap": 230.010, "bestLap": 228.900, "sectors": [{ "time": 31.400, "color": "yellow" }, { "time": 102.610, "color": "yellow" }, { "time": 96.000, "color": "purple" }], "inPit": false, "pitCount": 3 },
+        { "pos": 9, "classPos": 3, "num": "59", "driver": "Marvin Kirchhöfer", "team": "United Autosports", "car": "McLaren 720S GT3", "gapLeader": { "sec": 4.220 }, "gapAhead": { "sec": 3.380 }, "lastLap": 230.450, "bestLap": 229.100, "sectors": [{ "time": 31.500, "color": "yellow" }, { "time": 102.950, "color": "yellow" }, { "time": 96.000, "color": "green" }], "inPit": false, "pitCount": 3 },
+        { "pos": 10, "classPos": 4, "num": "777", "driver": "Clément Mateu", "team": "D'Station Racing", "car": "Aston Martin Vantage", "gapLeader": { "sec": 18.700 }, "gapAhead": { "sec": 14.480 }, "lastLap": 231.220, "bestLap": 229.880, "sectors": [{ "time": 31.700, "color": "yellow" }, { "time": 103.520, "color": "yellow" }, { "time": 96.000, "color": "yellow" }], "inPit": false, "pitCount": 2 },
+        { "pos": 11, "classPos": 5, "num": "46", "driver": "Ahmad Al Harthy", "team": "Team WRT", "car": "BMW M4 GT3", "gapLeader": { "sec": 19.540 }, "gapAhead": { "sec": 0.840 }, "lastLap": 231.300, "bestLap": 230.010, "sectors": [{ "time": 31.760, "color": "yellow" }, { "time": 103.540, "color": "yellow" }, { "time": 96.000, "color": "yellow" }], "inPit": false, "pitCount": 2 },
+        { "pos": 12, "classPos": 6, "num": "85", "driver": "Sarah Bovy", "team": "Iron Dames", "car": "Lamborghini Huracán", "gapLeader": { "sec": 33.110 }, "gapAhead": { "sec": 13.570 }, "lastLap": 232.040, "bestLap": 230.660, "sectors": [{ "time": 31.900, "color": "yellow" }, { "time": 104.140, "color": "yellow" }, { "time": 96.000, "color": "yellow" }], "inPit": true, "pitCount": 3 },
+        { "pos": 13, "classPos": 7, "num": "95", "driver": "Riccardo Pera", "team": "United Autosports", "car": "McLaren 720S GT3", "gapLeader": { "sec": 41.880 }, "gapAhead": { "sec": 8.770 }, "lastLap": 232.500, "bestLap": 231.220, "sectors": [{ "time": 32.000, "color": "yellow" }, { "time": 104.500, "color": "yellow" }, { "time": 96.000, "color": "yellow" }], "inPit": false, "pitCount": 3 },
+        { "pos": 14, "classPos": 8, "num": "10", "driver": "Gabriel Aubry", "team": "Racing Spirit of Léman", "car": "Aston Martin Vantage", "gapLeader": { "laps": 1 }, "gapAhead": { "laps": 1 }, "lastLap": 233.660, "bestLap": 232.040, "sectors": [{ "time": 32.220, "color": "yellow" }, { "time": 105.000, "color": "yellow" }, { "time": 96.440, "color": "yellow" }], "inPit": false, "pitCount": 3 }
+      ]
+    }
+  ]
+}
