@@ -691,13 +691,16 @@
       const model = await res.json();
       const tower = document.getElementById('lmu-tower');
       if (!tower) return;
+      const overlay = document.getElementById('multistream-overlay');
       if (!model || model.offline || !model.sessionActive) {
         tower.dataset.visible = '0';
         tower.setAttribute('aria-hidden', 'true');
+        if (overlay) overlay.dataset.lmu = '0';
         return;
       }
       tower.dataset.visible = '1';
       tower.setAttribute('aria-hidden', 'false');
+      if (overlay) overlay.dataset.lmu = '1'; // reserve the tower strip; streams shift + shrink
       renderTower(model);
     } catch (_) {
       /* transient fetch error — keep last render */
@@ -715,6 +718,8 @@
     ms.lmuTimer = null;
     const tower = document.getElementById('lmu-tower');
     if (tower) { tower.dataset.visible = '0'; tower.setAttribute('aria-hidden', 'true'); }
+    const overlay = document.getElementById('multistream-overlay');
+    if (overlay) overlay.dataset.lmu = '0';
     hideCallout();
     ms.lmuCalloutQueue = [];
     ms.lmuCalloutActive = false;

@@ -19,6 +19,7 @@
       --text: #edf4ff;
       --dim: #88a0c9;
       --border: rgba(255, 255, 255, 0.09);
+      --lmu-w: 360px; /* reserved width for the live timing tower when active */
     }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -152,6 +153,21 @@
     #stream-grid {
       width: 1920px;
       height: 958px;
+      transition: width 0.35s ease, margin-left 0.35s ease;
+    }
+
+    /* When the LMU tower is active, reserve its strip so streams shift right and
+       shrink to fit rather than being covered. Scoped overrides win on specificity. */
+    #multistream-overlay[data-lmu='1'] #stream-grid {
+      margin-left: var(--lmu-w);
+      width: calc(1920px - var(--lmu-w));
+    }
+    #multistream-overlay[data-lmu='1'][data-layout='grid'] #stream-grid,
+    #multistream-overlay[data-lmu='1'][data-layout='dual'] #stream-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    #multistream-overlay[data-lmu='1'][data-layout='pip'] #stream-grid {
+      grid-template-columns: 2fr 1fr;
     }
 
     /* ── GRID LAYOUT (2×2 equal, 960×479) ───────────────────────────────────── */
@@ -385,11 +401,11 @@
     #lmu-tower {
       position: absolute;
       top: 0; left: 0; bottom: 0;
-      width: 482px;
+      width: var(--lmu-w);
       z-index: 20;
       display: none;
       flex-direction: column;
-      padding: 12px 12px 64px;
+      padding: 10px 10px 60px;
       background: linear-gradient(90deg, var(--panel-deep) 0%, rgba(2, 6, 18, 0.92) 78%, transparent 100%);
       border-right: 1px solid var(--border);
       font-family: 'Rajdhani', sans-serif;
@@ -438,17 +454,17 @@
 
     .lmu-row {
       display: grid;
-      grid-template-columns: 24px 30px 1fr 42px 58px 60px;
+      grid-template-columns: 20px 26px 1fr 40px 50px 54px;
       align-items: center;
-      gap: 6px;
-      height: 34px;
-      padding: 0 8px;
+      gap: 5px;
+      height: 32px;
+      padding: 0 7px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       background: rgba(6, 12, 28, 0.55);
       transition: transform 0.4s ease, background 0.3s ease;
     }
-    #lmu-tower.compact .lmu-row { height: 27px; }
-    #lmu-tower.compact .lmu-drv { font-size: 13px; }
+    #lmu-tower.compact .lmu-row { height: 26px; }
+    #lmu-tower.compact .lmu-drv { font-size: 12px; }
     .lmu-row:last-child { border-radius: 0 0 6px 6px; }
     .lmu-pos { font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700; color: var(--text); text-align: center; }
     .lmu-num {
@@ -457,7 +473,7 @@
       border: 1px solid rgba(32, 201, 255, 0.4); border-radius: 4px; padding: 1px 0;
     }
     .lmu-row[data-cls='LMGT3'] .lmu-num { color: var(--orange); border-color: rgba(255, 138, 0, 0.4); }
-    .lmu-drv { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
+    .lmu-drv { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.2px; }
     .lmu-sectors { display: flex; gap: 3px; justify-content: center; }
     .lmu-sec { width: 10px; height: 12px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
     .lmu-sec.purple { background: var(--purple); box-shadow: 0 0 6px rgba(180, 107, 255, 0.7); }
