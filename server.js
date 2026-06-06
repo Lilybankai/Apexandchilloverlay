@@ -868,6 +868,53 @@ app.get('/api/lmu/live', async (_req, res) => {
   res.json(await lmuFetchLive()); // always 200, even offline — overlay renders a waiting state
 });
 
+// Connection sanity check. Probes the REAL game API directly (bypasses the mock and
+// the cache) so you can confirm reachability + see the raw field names before going live.
+app.get('/api/lmu/health', async (_req, res) => {
+  const out = {
+    ok: false,
+    mock: LMU_MOCK,            // true => the overlay is currently serving fixture data
+    base: LMU_API_BASE,
+    standingsPath: LMU_STANDINGS_PATH,
+    sessionPath: LMU_SESSION_PATH,
+    reachable: false
+  };
+  const started = Date.now();
+  try {
+    const standings = await lmuFetch(LMU_STANDINGS_PATH);
+    out.reachable = true;
+    out.ok = true;
+    out.latencyMs = Date.now() - started;
+    out.rawShape = Array.isArray(standings) ? 'array' : typeof standings;
+    const list = Array.isArray(standings) ? standings
+      : Array.isArray(standings?.standings) ? standings.standings
+      : Array.isArray(standings?.entries) ? standings.entries
+      : [];
+    out.entryCount = list.length;
+    out.sampleRaw = list[0] || null; // ← real field names live here; paste this to me if mapping looks off
+    try {
+      const session = await lmuFetch(LMU_SESSION_PATH);
+      out.sessionKeys = session && typeof session === 'object' ? Object.keys(session) : null;
+      out.sampleSession = session || null;
+    } catch (e) {
+      out.sessionError = String(e?.message || e);
+    }
+    try {
+      const norm = normalizeLmuLive(standings, null);
+      out.normalized = {
+        sessionActive: norm.sessionActive,
+        classes: (norm.classes || []).map(c => ({ name: c.name, entries: c.entries.length }))
+      };
+    } catch (_) {}
+  } catch (e) {
+    out.error = String(e?.message || e);
+    out.hint = LMU_MOCK
+      ? 'LMU_MOCK=1 is set — the overlay shows fixture data. This probe still tries the real game API, so this error just means the game/API is not reachable from the server.'
+      : `Could not reach ${LMU_API_BASE}${LMU_STANDINGS_PATH}. Is LMU running on this machine, and is LMU_API_BASE reachable from the server? Check ${LMU_API_BASE}/swagger on the game PC.`;
+  }
+  res.json(out);
+});
+
 // ── LMU overtake / battle detection (server-side, broadcast over SSE) ─────────
 function lmuPosByCar(snapshot) {
   const map = {};
