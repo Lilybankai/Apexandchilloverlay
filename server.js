@@ -785,6 +785,25 @@ function sectorColour(time, carNum, sectorIdx) {
   return 'yellow';
 }
 
+/** Lap/sector time → number, or null when the game reports "no time" (<= 0, often -1 or 0). */
+function lapOrNull(value) {
+  const n = toNum(value);
+  return n != null && n > 0 ? n : null;
+}
+
+/** Repair UTF-8 text that arrived Latin-1-decoded (mojibake), e.g. accented driver/team names. */
+function fixMojibake(value) {
+  if (typeof value !== 'string') return value;
+  let suspect = false;
+  for (let i = 0; i < value.length - 1; i++) {
+    const c = value.charCodeAt(i);
+    const n = value.charCodeAt(i + 1);
+    if ((c === 0xC2 || c === 0xC3) && n >= 0x80 && n <= 0xBF) { suspect = true; break; }
+  }
+  if (!suspect) return value;
+  try { return Buffer.from(value, 'latin1').toString('utf8'); } catch (_) { return value; }
+}
+
 /** Raw LMU watch/standings + sessionInfo → clean tower model. Defensive about field names. */
 function normalizeLmuLive(rawStandings, rawSession) {
   const list = Array.isArray(rawStandings)
@@ -815,32 +834,33 @@ function normalizeLmuLive(rawStandings, rawSession) {
     const className = lmuClassLabel(pick(entry, 'carClass', 'carClassName', 'class', 'vehicleClass'));
     const num = String(pick(entry, 'carNumber', 'carNo', 'number', 'carID', 'slotID') ?? idx + 1);
 
-    const s1 = toNum(pick(entry, 'lastSectorTime1', 'currentSectorTime1', 'sector1'));
-    const s2 = toNum(pick(entry, 'lastSectorTime2', 'currentSectorTime2', 'sector2'));
-    const s3 = toNum(pick(entry, 'lastSectorTime3', 'currentSectorTime3', 'sector3'));
+    // LMU exposes only S1 & S2 live (S3 is implicit). Use current-lap splits, fall back to last lap.
+    const s1 = lapOrNull(pick(entry, 'currentSectorTime1', 'lastSectorTime1'));
+    const s2 = lapOrNull(pick(entry, 'currentSectorTime2', 'lastSectorTime2'));
 
-    const lapsBehind = toNum(pick(entry, 'lapsBehindLeader'));
-    const timeBehind = toNum(pick(entry, 'timeBehindLeader', 'gapToLeader'));
+    // Class-relative gaps for the in-class tower (fall back to overall fields if class ones are absent).
+    const lapsBehind = toNum(pick(entry, 'lapsBehindClassLeader', 'lapsBehindLeader'));
+    const timeBehind = toNum(pick(entry, 'timeBehindClassLeader', 'timeBehindLeader'));
     const lapsBehindNext = toNum(pick(entry, 'lapsBehindNext'));
-    const timeBehindNext = toNum(pick(entry, 'timeBehindNext', 'gapToNext'));
+    const timeBehindNext = toNum(pick(entry, 'timeBehindNext'));
 
     const row = {
       pos: toNum(pick(entry, 'position', 'place')) || idx + 1,
       classPos: null, // assigned per class below
       num,
-      driver: String(pick(entry, 'driverName', 'fullName', 'name') || `Car ${num}`).trim(),
-      team: pick(entry, 'team', 'teamName') || null,
+      driver: fixMojibake(String(pick(entry, 'driverName', 'fullName', 'name') || `Car ${num}`).trim()),
+      team: fixMojibake(pick(entry, 'fullTeamName', 'teamName', 'team') || '') || null,
       car: pick(entry, 'vehicleName', 'carName', 'fullVehicleName') || null,
-      gapLeader: lapsBehind && lapsBehind > 0 ? { laps: lapsBehind } : (timeBehind != null ? { sec: timeBehind } : null),
-      gapAhead: lapsBehindNext && lapsBehindNext > 0 ? { laps: lapsBehindNext } : (timeBehindNext != null ? { sec: timeBehindNext } : null),
-      lastLap: toNum(pick(entry, 'lastLapTime', 'lastLap')),
-      bestLap: toNum(pick(entry, 'bestLapTime', 'fastestLapTime', 'bestLap')),
+      gapLeader: lapsBehind > 0 ? { laps: lapsBehind } : (timeBehind != null && timeBehind > 0 ? { sec: timeBehind } : null),
+      gapAhead: lapsBehindNext > 0 ? { laps: lapsBehindNext } : (timeBehindNext != null && timeBehindNext > 0 ? { sec: timeBehindNext } : null),
+      lastLap: lapOrNull(pick(entry, 'lastLapTime', 'lastLap')),
+      bestLap: lapOrNull(pick(entry, 'bestLapTime', 'fastestLapTime', 'bestLap')),
       sectors: [
         { time: s1, color: sectorColour(s1, num, 0) },
         { time: s2, color: sectorColour(s2, num, 1) },
-        { time: s3, color: sectorColour(s3, num, 2) }
+        { time: null, color: null } // LMU has no live S3 field
       ],
-      inPit: !!(pick(entry, 'pitting', 'inPits', 'inGarageStall')),
+      inPit: !!(pick(entry, 'pitting', 'inPits') || pick(entry, 'inGarageStall')),
       pitCount: toNum(pick(entry, 'pitstops', 'pitStops')) || 0
     };
 
@@ -858,6 +878,7 @@ function normalizeLmuLive(rawStandings, rawSession) {
   const classes = classNames.map(name => {
     const entries = byClass.get(name).sort((a, b) => a.pos - b.pos);
     entries.forEach((e, i) => { e.classPos = i + 1; });
+    if (entries[0]) entries[0].gapLeader = null; // class leader shows "—", not "+0.000"
     return { name, entries };
   });
 
@@ -900,7 +921,11 @@ app.get('/api/lmu/health', async (_req, res) => {
       out.sessionError = String(e?.message || e);
     }
     try {
+      // Snapshot/restore sector-best state so this diagnostic can't perturb live colouring.
+      const snap = { field: [...lmuSectorBest.field], byCar: { ...lmuSectorBest.byCar } };
       const norm = normalizeLmuLive(standings, null);
+      lmuSectorBest.field = snap.field;
+      lmuSectorBest.byCar = snap.byCar;
       out.normalized = {
         sessionActive: norm.sessionActive,
         classes: (norm.classes || []).map(c => ({ name: c.name, entries: c.entries.length }))
@@ -981,6 +1006,8 @@ function stopLmuPoll() {
   lmuPollTimer = null;
   lmuPrev = null;
   lmuLastEventByCar = {};
+  lmuSectorBest.field = [null, null, null];
+  lmuSectorBest.byCar = {};
 }
 
 // ── Multi-stream helpers ──────────────────────────────────────────────────────
