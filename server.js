@@ -22,6 +22,18 @@ const SLP_GT7_SEASONS = [
 const SLP_GT7_LEAGUE_ID_DEFAULT = SLP_GT7_SEASONS[0].id;
 const slpGt7LeagueIdSet = new Set(SLP_GT7_SEASONS.map(s => s.id));
 
+// ── Le Mans Ultimate local REST API (runs on the same machine as the game) ────
+// The game exposes a localhost REST API (Swagger at <base>/swagger) that the
+// in-game UI and community tools read live timing from. We only ever read it.
+const LMU_API_BASE = (process.env.LMU_API_BASE || 'http://localhost:6397').replace(/\/+$/, '');
+const LMU_MOCK = process.env.LMU_MOCK === '1'; // dev: serve data/lmu-live-sample.json instead of the game
+const LMU_LIVE_CACHE_MS = 750;                 // collapse concurrent overlay polls into one upstream call
+const LMU_BATTLE_GAP_SEC = 1.0;                // gapAhead at/under this = a battle
+const LMU_OVERTAKE_DEBOUNCE_MS = 5000;         // per-car cooldown so one pass fires one call-out
+// Live-timing endpoints. Confirm against <base>/swagger; override via env if the build differs.
+const LMU_STANDINGS_PATH = process.env.LMU_STANDINGS_PATH || '/rest/watch/standings';
+const LMU_SESSION_PATH = process.env.LMU_SESSION_PATH || '/rest/watch/sessionInfo';
+
 // Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
 app.set('trust proxy', 1);
 
@@ -65,11 +77,21 @@ let multistreamState = {
   streamStats: {},
   /** Lower-third style ticker — text and timing from control panel. */
   banner: { enabled: false, text: '', durationSec: 40 },
+  /** LMU live timing tower — armed once, then fully automatic. Off by default (GT7 unaffected). */
+  lmuTiming: { enabled: false },
 };
 let msRotationTimer = null;
 let msStatsTimer = null;
 let twitchAccessToken = null;
 let twitchTokenExpiresAt = 0;
+
+// ── LMU live-timing runtime state ─────────────────────────────────────────────
+let lmuLiveCache = { ts: 0, data: null }; // short-lived normalized snapshot
+let lmuPollTimer = null;                  // server-side detection loop (overtakes/battles)
+let lmuPrev = null;                       // previous snapshot, for diffing
+let lmuApiOnline = true;                  // false after a failed fetch; re-probes on next poll
+let lmuLastEventByCar = {};               // carNum → ts of last overtake call-out (debounce)
+const lmuSectorBest = { field: [null, null, null], byCar: {} }; // best sector times for colouring
 
 async function simgridFetch(pathname) {
   const url = `${SIMGRID_BASE}${pathname}`;
@@ -679,6 +701,241 @@ app.get('/api/gt7/career', async (req, res) => {
   }
 });
 
+// ── LMU live timing ───────────────────────────────────────────────────────────
+// Reads the Le Mans Ultimate localhost REST API for whole-session live timing.
+// All reads are offline-safe: any failure resolves to {offline:true} rather than
+// throwing, so the overlay can show a clean "waiting" state and other features
+// (GT7, multistream grid) are never affected.
+
+/** First defined value among several candidate field names (handles API naming drift). */
+function pick(obj, ...keys) {
+  for (const k of keys) {
+    if (obj && obj[k] != null && obj[k] !== '') return obj[k];
+  }
+  return undefined;
+}
+
+function toNum(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function lmuFetch(pathname) {
+  const res = await fetch(`${LMU_API_BASE}${pathname}`, { signal: AbortSignal.timeout(1500) });
+  if (!res.ok) throw new Error(`LMU ${res.status}`);
+  return res.json();
+}
+
+/** Cached + offline-safe. Returns the normalized tower model, or {offline:true}. */
+async function lmuFetchLive() {
+  if (lmuLiveCache.data && Date.now() - lmuLiveCache.ts < LMU_LIVE_CACHE_MS) {
+    return lmuLiveCache.data;
+  }
+  if (LMU_MOCK) {
+    try {
+      const raw = await fs.readFile(path.join(__dirname, 'data', 'lmu-live-sample.json'), 'utf8');
+      const data = JSON.parse(raw);
+      lmuLiveCache = { ts: Date.now(), data };
+      return data;
+    } catch (_) {
+      return { offline: true, sessionActive: false, sessionInfo: null, classes: [] };
+    }
+  }
+  try {
+    const [standings, session] = await Promise.all([
+      lmuFetch(LMU_STANDINGS_PATH),
+      lmuFetch(LMU_SESSION_PATH).catch(() => null) // session info is a nice-to-have
+    ]);
+    const data = normalizeLmuLive(standings, session);
+    lmuLiveCache = { ts: Date.now(), data };
+    lmuApiOnline = true;
+    return data;
+  } catch (_) {
+    lmuApiOnline = false;
+    const data = { offline: true, sessionActive: false, sessionInfo: null, classes: [] };
+    lmuLiveCache = { ts: Date.now(), data };
+    return data;
+  }
+}
+
+/** Map an LMU class name to a friendly group label. */
+function lmuClassLabel(raw) {
+  const k = normalizeKey(raw);
+  if (!k) return 'Other';
+  if (k.includes('hyper') || k.includes('lmh') || k.includes('lmdh') || k === 'hc') return 'Hypercar';
+  if (k.includes('gt3') || k.includes('lmgt3')) return 'LMGT3';
+  return String(raw).trim();
+}
+
+/** Colour a sector time vs the field best / this car's personal best. */
+function sectorColour(time, carNum, sectorIdx) {
+  if (time == null) return null;
+  const field = lmuSectorBest.field[sectorIdx];
+  if (field == null || time <= field) {
+    lmuSectorBest.field[sectorIdx] = field == null ? time : Math.min(field, time);
+    return 'purple';
+  }
+  const car = lmuSectorBest.byCar[carNum] || [null, null, null];
+  if (car[sectorIdx] == null || time <= car[sectorIdx]) {
+    car[sectorIdx] = car[sectorIdx] == null ? time : Math.min(car[sectorIdx], time);
+    lmuSectorBest.byCar[carNum] = car;
+    return 'green';
+  }
+  return 'yellow';
+}
+
+/** Raw LMU watch/standings + sessionInfo → clean tower model. Defensive about field names. */
+function normalizeLmuLive(rawStandings, rawSession) {
+  const list = Array.isArray(rawStandings)
+    ? rawStandings
+    : Array.isArray(rawStandings?.standings) ? rawStandings.standings
+    : Array.isArray(rawStandings?.entries) ? rawStandings.entries
+    : [];
+
+  if (!list.length) {
+    return { offline: false, sessionActive: false, sessionInfo: null, classes: [] };
+  }
+
+  const session = rawSession || {};
+  const endTime = toNum(pick(session, 'endEventTime', 'maximumTime'));
+  const curTime = toNum(pick(session, 'currentEventTime'));
+  const sessionInfo = {
+    type: pick(session, 'session', 'sessionType', 'name') || null,
+    timeRemaining: endTime != null && curTime != null ? Math.max(0, endTime - curTime) : null,
+    flag: pick(session, 'sectorFlag', 'phase', 'gamePhase') || null,
+    trackTemp: toNum(pick(session, 'trackTemp', 'trackTemperature')),
+    airTemp: toNum(pick(session, 'ambientTemp', 'airTemperature', 'ambientTemperature')),
+    totalLaps: toNum(pick(session, 'maximumLaps', 'totalLaps')),
+    currentLap: toNum(pick(session, 'currentLap', 'leaderLap'))
+  };
+
+  const byClass = new Map();
+  list.forEach((entry, idx) => {
+    const className = lmuClassLabel(pick(entry, 'carClass', 'carClassName', 'class', 'vehicleClass'));
+    const num = String(pick(entry, 'carNumber', 'carNo', 'number', 'carID', 'slotID') ?? idx + 1);
+
+    const s1 = toNum(pick(entry, 'lastSectorTime1', 'currentSectorTime1', 'sector1'));
+    const s2 = toNum(pick(entry, 'lastSectorTime2', 'currentSectorTime2', 'sector2'));
+    const s3 = toNum(pick(entry, 'lastSectorTime3', 'currentSectorTime3', 'sector3'));
+
+    const lapsBehind = toNum(pick(entry, 'lapsBehindLeader'));
+    const timeBehind = toNum(pick(entry, 'timeBehindLeader', 'gapToLeader'));
+    const lapsBehindNext = toNum(pick(entry, 'lapsBehindNext'));
+    const timeBehindNext = toNum(pick(entry, 'timeBehindNext', 'gapToNext'));
+
+    const row = {
+      pos: toNum(pick(entry, 'position', 'place')) || idx + 1,
+      classPos: null, // assigned per class below
+      num,
+      driver: String(pick(entry, 'driverName', 'fullName', 'name') || `Car ${num}`).trim(),
+      team: pick(entry, 'team', 'teamName') || null,
+      car: pick(entry, 'vehicleName', 'carName', 'fullVehicleName') || null,
+      gapLeader: lapsBehind && lapsBehind > 0 ? { laps: lapsBehind } : (timeBehind != null ? { sec: timeBehind } : null),
+      gapAhead: lapsBehindNext && lapsBehindNext > 0 ? { laps: lapsBehindNext } : (timeBehindNext != null ? { sec: timeBehindNext } : null),
+      lastLap: toNum(pick(entry, 'lastLapTime', 'lastLap')),
+      bestLap: toNum(pick(entry, 'bestLapTime', 'fastestLapTime', 'bestLap')),
+      sectors: [
+        { time: s1, color: sectorColour(s1, num, 0) },
+        { time: s2, color: sectorColour(s2, num, 1) },
+        { time: s3, color: sectorColour(s3, num, 2) }
+      ],
+      inPit: !!(pick(entry, 'pitting', 'inPits', 'inGarageStall')),
+      pitCount: toNum(pick(entry, 'pitstops', 'pitStops')) || 0
+    };
+
+    if (!byClass.has(className)) byClass.set(className, []);
+    byClass.get(className).push(row);
+  });
+
+  // Hypercar first, then LMGT3, then anything else.
+  const order = ['Hypercar', 'LMGT3'];
+  const classNames = [...byClass.keys()].sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  const classes = classNames.map(name => {
+    const entries = byClass.get(name).sort((a, b) => a.pos - b.pos);
+    entries.forEach((e, i) => { e.classPos = i + 1; });
+    return { name, entries };
+  });
+
+  return { offline: false, sessionActive: true, sessionInfo, classes };
+}
+
+app.get('/api/lmu/live', async (_req, res) => {
+  res.json(await lmuFetchLive()); // always 200, even offline — overlay renders a waiting state
+});
+
+// ── LMU overtake / battle detection (server-side, broadcast over SSE) ─────────
+function lmuPosByCar(snapshot) {
+  const map = {};
+  (snapshot.classes || []).forEach(cls => {
+    cls.entries.forEach(e => { map[e.num] = { classPos: e.classPos, className: cls.name }; });
+  });
+  return map;
+}
+
+function detectAndBroadcast(curr) {
+  if (!curr || curr.offline || !curr.sessionActive) { lmuPrev = null; return; }
+  const prev = lmuPrev;
+  lmuPrev = curr;
+  const battles = [];
+
+  (curr.classes || []).forEach(cls => {
+    cls.entries.forEach(e => {
+      // Battle: within the gap threshold of the car ahead in the same class.
+      if (e.gapAhead && e.gapAhead.sec != null && e.gapAhead.sec <= LMU_BATTLE_GAP_SEC && e.classPos > 1) {
+        const ahead = cls.entries.find(o => o.classPos === e.classPos - 1);
+        if (ahead) battles.push({ className: cls.name, behind: e.num, ahead: ahead.num, pos: e.classPos });
+      }
+    });
+  });
+
+  if (prev) {
+    const prevPos = lmuPosByCar(prev);
+    const now = Date.now();
+    (curr.classes || []).forEach(cls => {
+      cls.entries.forEach(e => {
+        const was = prevPos[e.num];
+        if (!was || was.className !== cls.name) return;
+        if (e.classPos < was.classPos) { // gained at least one place in class
+          if (now - (lmuLastEventByCar[e.num] || 0) < LMU_OVERTAKE_DEBOUNCE_MS) return;
+          lmuLastEventByCar[e.num] = now;
+          broadcast({
+            type: 'lmuOvertake',
+            num: e.num, driver: e.driver, className: cls.name,
+            fromPos: was.classPos, toPos: e.classPos
+          });
+        }
+      });
+    });
+  }
+
+  broadcast({ type: 'lmuBattle', battles });
+}
+
+function startLmuPoll() {
+  clearInterval(lmuPollTimer);
+  lmuPrev = null;
+  lmuLastEventByCar = {};
+  lmuSectorBest.field = [null, null, null]; // fresh purple/green baseline per arming
+  lmuSectorBest.byCar = {};
+  lmuPollTimer = setInterval(async () => {
+    const curr = await lmuFetchLive();
+    if (curr.offline || !curr.sessionActive) return; // no session yet — quietly wait
+    detectAndBroadcast(curr);
+  }, 1000);
+}
+
+function stopLmuPoll() {
+  clearInterval(lmuPollTimer);
+  lmuPollTimer = null;
+  lmuPrev = null;
+  lmuLastEventByCar = {};
+}
+
 // ── Multi-stream helpers ──────────────────────────────────────────────────────
 function generateStreamId() {
   return Math.random().toString(36).slice(2, 9);
@@ -973,6 +1230,12 @@ app.post('/api/multistream/command', async (req, res) => {
     if (args.durationSec != null) {
       multistreamState.banner.durationSec = Math.max(12, Math.min(180, Number(args.durationSec) || 40));
     }
+  }
+
+  if (cmd === 'setLmuTiming') {
+    multistreamState.lmuTiming.enabled = !!args.enabled;
+    if (multistreamState.lmuTiming.enabled) startLmuPoll();
+    else stopLmuPoll();
   }
 
   if (statsDirty) {
