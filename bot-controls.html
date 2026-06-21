@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stream Bot — Apex &amp; Chill</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --cyan: #00d4ff; --purple: #b400ff; --green: #00ff88; --orange: #ff8a00; --red: #ff4466;
+      --bg: #06060f; --surface: #0d0d22; --surface2: #111128;
+      --border: rgba(255,255,255,0.07); --text: #eaeaf5; --dim: #556688;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', Arial, sans-serif; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 24px; }
+    .panel { width: 640px; background: var(--surface); border-radius: 16px; border: 1px solid rgba(0,212,255,0.18); box-shadow: 0 0 60px rgba(0,180,255,0.06); overflow: hidden; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1px solid var(--border); background: linear-gradient(90deg, rgba(0,212,255,0.06), rgba(180,0,255,0.04)); }
+    .panel-title { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; }
+    .panel-sub { font-size: 11px; color: var(--dim); letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+    .conn-wrap { display: flex; align-items: center; gap: 8px; font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+    .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #333; transition: background .3s, box-shadow .3s; }
+    .conn-wrap.online .conn-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .conn-wrap.online .conn-label { color: var(--green); }
+
+    .section { padding: 20px 28px; border-bottom: 1px solid var(--border); }
+    .section-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--dim); letter-spacing: 4px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+    .section-count { font-size: 11px; color: var(--dim); }
+    .hint { font-size: 11px; color: var(--dim); line-height: 1.5; margin-top: 8px; }
+    .hint code { color: var(--cyan); }
+
+    label.fld { display: block; font-size: 11px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin: 10px 0 5px; }
+    input[type=text], input[type=number], textarea, select { width: 100%; padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 14px; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: rgba(0,212,255,0.4); }
+    textarea { resize: vertical; min-height: 52px; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row > * { min-width: 0; }
+    .grow { flex: 1; }
+
+    button { font-family: 'Orbitron', monospace; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; transition: all .2s; }
+    .btn { padding: 11px 16px; border-radius: 9px; border: 1px solid rgba(0,212,255,0.4); background: rgba(0,212,255,0.08); color: var(--cyan); font-size: 11px; white-space: nowrap; }
+    .btn:hover { background: rgba(0,212,255,0.16); }
+    .btn.green { border-color: rgba(0,255,136,0.5); color: var(--green); background: rgba(0,255,136,0.07); }
+    .btn.orange { border-color: rgba(255,138,0,0.4); color: var(--orange); background: rgba(255,138,0,0.07); }
+    .btn.ghost { border-color: var(--border); color: var(--dim); background: rgba(255,255,255,0.03); }
+    .btn.sm { padding: 6px 11px; font-size: 9px; letter-spacing: 1px; border-radius: 7px; }
+    .btn.red { border-color: rgba(255,68,102,0.3); color: var(--red); background: rgba(255,68,102,0.06); }
+    .btn.red:hover { background: rgba(255,68,102,0.15); }
+    a.btn { display: inline-block; text-decoration: none; }
+
+    .pill { font-family: 'Orbitron', monospace; font-size: 9px; letter-spacing: 1px; padding: 3px 8px; border-radius: 5px; text-transform: uppercase; }
+    .pill.on { background: rgba(0,255,136,0.12); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+    .pill.off { background: rgba(255,68,102,0.1); color: var(--red); border: 1px solid rgba(255,68,102,0.25); }
+
+    .conn-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); margin-bottom: 10px; }
+    .conn-card .meta { flex: 1; min-width: 0; }
+    .conn-card .name { font-size: 13px; font-weight: 600; }
+    .conn-card .sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+    .toggle-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+    .toggle-row .grow { font-size: 13px; }
+    .chk { width: 18px; height: 18px; accent-color: var(--cyan); cursor: pointer; }
+
+    .item { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; margin-top: 8px; }
+    .item .top { display: flex; align-items: center; gap: 10px; }
+    .item .trig { font-family: 'Orbitron', monospace; font-size: 12px; color: var(--cyan); }
+    .item .resp { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .tags { font-size: 10px; color: var(--dim); margin-top: 4px; letter-spacing: .5px; }
+    .none { color: var(--dim); font-size: 13px; text-align: center; padding: 14px 0; }
+
+    .ev-grid { display: flex; flex-direction: column; gap: 8px; }
+    .ev { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+    .ev .ev-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .ev .ev-name { font-family: 'Orbitron', monospace; font-size: 11px; letter-spacing: 1px; flex: 1; }
+
+    #log { background: #05050c; border: 1px solid var(--border); border-radius: 10px; padding: 10px; height: 200px; overflow-y: auto; font-family: 'Rajdhani', monospace; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+    .log-line { display: flex; gap: 8px; }
+    .log-line .ts { color: var(--dim); flex-shrink: 0; }
+    .log-line.sent .tx { color: var(--green); }
+    .log-line.command .tx { color: var(--cyan); }
+    .log-line.event .tx { color: var(--orange); }
+    .log-line.error .tx { color: var(--red); }
+    .log-line.info .tx { color: var(--dim); }
+    .running-badge { font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 2px; padding: 5px 12px; border-radius: 7px; }
+    .running-badge.on { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+    .running-badge.off { background: rgba(255,255,255,0.04); color: var(--dim); border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Stream Bot</div>
+        <div class="panel-sub">Apex &amp; Chill · Twitch + YouTube</div>
+      </div>
+      <div class="conn-wrap" id="conn"><div class="conn-dot"></div><span class="conn-label">Offline</span></div>
+    </div>
+
+    <!-- Connection & status -->
+    <div class="section">
+      <div class="section-label"><span>Connection</span><span id="run-badge" class="running-badge off">Stopped</span></div>
+
+      <div class="conn-card">
+        <span class="pill off" id="tw-pill">Twitch</span>
+        <div class="meta"><div class="name" id="tw-name">Not connected</div><div class="sub" id="tw-sub">Authorize the dedicated bot account</div></div>
+        <a class="btn sm" href="/auth/twitch/login">Connect</a>
+      </div>
+      <div class="conn-card">
+        <span class="pill off" id="yt-pill">YouTube</span>
+        <div class="meta"><div class="name" id="yt-name">Not connected</div><div class="sub" id="yt-sub">Authorize the bot's Google account</div></div>
+        <a class="btn sm" href="/auth/google/login">Connect</a>
+      </div>
+
+      <label class="fld">Twitch channel to join</label>
+      <div class="row"><input type="text" id="tw-channel" class="grow" placeholder="apexandchill" autocomplete="off"><button class="btn sm" onclick="saveChannel()">Save</button></div>
+
+      <label class="fld">YouTube source</label>
+      <div class="row">
+        <select id="yt-mode" class="grow" onchange="renderYtMode()">
+          <option value="auto">Auto (my active live broadcast)</option>
+          <option value="video">Specific video ID</option>
+        </select>
+        <input type="text" id="yt-video" class="grow" placeholder="video id" style="display:none">
+        <button class="btn sm" onclick="saveYt()">Save</button>
+      </div>
+
+      <div class="toggle-row"><span class="grow">Enable Twitch</span><input type="checkbox" class="chk" id="tw-enabled" onchange="saveEnables()"></div>
+      <div class="toggle-row"><span class="grow">Enable YouTube <span style="color:var(--orange)">(uses API quota)</span></span><input type="checkbox" class="chk" id="yt-enabled" onchange="saveEnables()"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn green grow" id="btn-start" onclick="cmd('start')">▶ Start bot</button>
+        <button class="btn ghost grow" id="btn-stop" onclick="cmd('stop')">■ Stop</button>
+      </div>
+
+      <label class="fld">Test message (sends now)</label>
+      <div class="row">
+        <select id="test-platform" style="max-width:130px"><option value="">Both</option><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
+        <input type="text" id="test-text" class="grow" placeholder="Hello chat!">
+        <button class="btn sm orange" onclick="testSay()">Send</button>
+      </div>
+    </div>
+
+    <!-- Commands -->
+    <div class="section">
+      <div class="section-label"><span>Commands</span><span class="section-count" id="cmd-count">0</span></div>
+      <label class="fld" id="cmd-form-title">New command</label>
+      <div class="row"><input type="text" id="c-trigger" placeholder="!command" style="max-width:160px"><input type="text" id="c-response" class="grow" placeholder="Response text — use $user, $discord, $uptime…"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="number" id="c-cd" placeholder="cooldown s" title="Global cooldown (s)" style="max-width:120px">
+        <input type="number" id="c-ucd" placeholder="per-user s" title="Per-user cooldown (s)" style="max-width:120px">
+        <label class="toggle-row" style="margin:0"><input type="checkbox" class="chk" id="c-mod"> <span style="font-size:12px">Mods only</span></label>
+        <span class="grow"></span>
+        <button class="btn sm" id="c-save" onclick="saveCommand()">Add</button>
+        <button class="btn sm ghost" id="c-cancel" style="display:none" onclick="cancelEditCommand()">Cancel</button>
+      </div>
+      <div id="cmd-list"></div>
+      <div class="hint">Variables: <code>$user</code> <code>$touser</code> <code>$channel</code> <code>$count</code> <code>$uptime</code> <code>$game</code> <code>$discord</code></div>
+    </div>
+
+    <!-- Timers -->
+    <div class="section">
+      <div class="section-label"><span>Timers</span><span class="section-count" id="tmr-count">0</span></div>
+      <label class="fld" id="tmr-form-title">New timer</label>
+      <div class="row"><input type="text" id="t-name" placeholder="Name" style="max-width:160px"><input type="text" id="t-message" class="grow" placeholder="Auto-message — e.g. Join the Discord! $discord"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="number" id="t-interval" placeholder="every (s)" title="Interval seconds" style="max-width:120px">
+        <input type="number" id="t-minlines" placeholder="min chat lines" title="Min chat lines since last post" style="max-width:140px">
+        <span class="grow"></span>
+        <button class="btn sm" id="t-save" onclick="saveTimer()">Add</button>
+        <button class="btn sm ghost" id="t-cancel" style="display:none" onclick="cancelEditTimer()">Cancel</button>
+      </div>
+      <div id="tmr-list"></div>
+    </div>
+
+    <!-- Events -->
+    <div class="section">
+      <div class="section-label"><span>Event auto-replies</span></div>
+      <div class="ev-grid" id="ev-list"></div>
+      <div class="hint">Variables: <code>$user</code> <code>$months</code> (resub/milestone) <code>$viewers</code> (raid) <code>$amount</code> (cheer bits) <code>$discord</code></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+      <div class="section-label"><span>Settings</span></div>
+      <label class="fld">Discord invite ($discord)</label>
+      <div class="row"><input type="text" id="s-discord" class="grow" placeholder="https://discord.gg/…"><button class="btn sm" onclick="saveSettings()">Save</button></div>
+      <div class="row" style="margin-top:8px">
+        <div class="grow"><label class="fld">Default cooldown (s)</label><input type="number" id="s-cd"></div>
+        <div class="grow"><label class="fld">Default per-user (s)</label><input type="number" id="s-ucd"></div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="section" style="border-bottom:none">
+      <div class="section-label"><span>Bot log</span></div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    let state = { running:false, twitch:{}, youtube:{}, settings:{}, commands:[], timers:[], events:{}, log:[] };
+    let evtSource = null;
+    let editingCmdId = null;
+    let editingTmrId = null;
+
+    async function cmd(command, args = {}) {
+      try {
+        const res = await fetch('/api/bot/command', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ cmd: command, ...args }) });
+        const json = await res.json();
+        if (json.ok && json.bot) applyState(json.bot);
+        return json;
+      } catch (e) { console.error('cmd error', e); return { ok:false }; }
+    }
+
+    function applyState(bot) { state = { ...state, ...bot }; renderUI(); }
+
+    // ── actions ──
+    function saveChannel() { cmd('setSettings', { twitchChannel: val('tw-channel') }); }
+    function saveYt() { cmd('setSettings', { youtubeMode: val('yt-mode'), youtubeVideoId: val('yt-video') }); }
+    function saveEnables() { cmd('setSettings', { twitchEnabled: document.getElementById('tw-enabled').checked, youtubeEnabled: document.getElementById('yt-enabled').checked }); }
+    function saveSettings() { cmd('setSettings', { discordInvite: val('s-discord'), defaultCooldownSec: numv('s-cd'), defaultUserCooldownSec: numv('s-ucd') }); }
+    function testSay() { const t = val('test-text'); if (!t) return; cmd('testSay', { platform: val('test-platform') || null, text: t }); document.getElementById('test-text').value=''; }
+
+    function saveCommand() {
+      const args = { trigger: val('c-trigger'), response: val('c-response'), cooldownSec: numv('c-cd'), userCooldownSec: numv('c-ucd'), modOnly: document.getElementById('c-mod').checked };
+      if (!args.trigger) return;
+      if (editingCmdId) cmd('editCommand', { id: editingCmdId, ...args }); else cmd('addCommand', args);
+      cancelEditCommand();
+    }
+    function editCommand(id) {
+      const c = state.commands.find(x => x.id === id); if (!c) return;
+      editingCmdId = id;
+      set('c-trigger', c.trigger); set('c-response', c.response); set('c-cd', c.cooldownSec); set('c-ucd', c.userCooldownSec);
+      document.getElementById('c-mod').checked = !!c.modOnly;
+      document.getElementById('c-save').textContent = 'Save';
+      document.getElementById('c-cancel').style.display = '';
+      document.getElementById('cmd-form-title').textContent = 'Editing ' + c.trigger;
+    }
+    function cancelEditCommand() {
+      editingCmdId = null;
+      ['c-trigger','c-response','c-cd','c-ucd'].forEach(i => set(i,'')); document.getElementById('c-mod').checked = false;
+      document.getElementById('c-save').textContent = 'Add';
+      document.getElementById('c-cancel').style.display = 'none';
+      document.getElementById('cmd-form-title').textContent = 'New command';
+    }
+    function removeCommand(id) { cmd('removeCommand', { id }); if (editingCmdId === id) cancelEditCommand(); }
+
+    function saveTimer() {
+      const args = { name: val('t-name'), message: val('t-message'), intervalSec: numv('t-interval'), minChatLines: numv('t-minlines') };
+      if (!args.message) return;
+      if (editingTmrId) cmd('editTimer', { id: editingTmrId, ...args }); else cmd('addTimer', args);
+      cancelEditTimer();
+    }
+    function editTimer(id) {
+      const t = state.timers.find(x => x.id === id); if (!t) return;
+      editingTmrId = id; set('t-name', t.name); set('t-message', t.message); set('t-interval', t.intervalSec); set('t-minlines', t.minChatLines);
+      document.getElementById('t-save').textContent = 'Save'; document.getElementById('t-cancel').style.display = '';
+      document.getElementById('tmr-form-title').textContent = 'Editing ' + t.name;
+    }
+    function cancelEditTimer() {
+      editingTmrId = null; ['t-name','t-message','t-interval','t-minlines'].forEach(i => set(i,''));
+      document.getElementById('t-save').textContent = 'Add'; document.getElementById('t-cancel').style.display = 'none';
+      document.getElementById('tmr-form-title').textContent = 'New timer';
+    }
+    function removeTimer(id) { cmd('removeTimer', { id }); if (editingTmrId === id) cancelEditTimer(); }
+    function toggleCommand(id, en) { cmd('editCommand', { id, enabled: en }); }
+    function toggleTimer(id, en) { cmd('editTimer', { id, enabled: en }); }
+    function setEvent(key, enabled, template) { cmd('setEvent', { key, enabled, template }); }
+
+    // ── helpers ──
+    function val(id){ return document.getElementById(id).value.trim(); }
+    function numv(id){ const v = document.getElementById(id).value; return v === '' ? undefined : Number(v); }
+    function set(id,v){ document.getElementById(id).value = (v==null?'':v); }
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function renderYtMode(){ document.getElementById('yt-video').style.display = val('yt-mode')==='video' ? '' : 'none'; }
+
+    // ── render ──
+    function renderUI() {
+      const s = state.settings || {};
+      // connection
+      const tw = state.twitch || {}, yt = state.youtube || {};
+      pill('tw-pill', tw.connected); pill('yt-pill', yt.connected);
+      document.getElementById('tw-name').textContent = tw.connected ? ('Connected: ' + (tw.login||'bot')) : 'Not connected';
+      document.getElementById('tw-sub').textContent = tw.available === false ? 'tmi.js not installed on server' : (tw.connected ? (tw.joined ? '#'+tw.joined : 'idle') : 'Authorize the dedicated bot account');
+      document.getElementById('yt-name').textContent = yt.connected ? ('Connected: ' + (yt.channelTitle||'bot')) : 'Not connected';
+      document.getElementById('yt-sub').textContent = yt.connected ? (yt.polling ? 'polling live chat' : 'idle (not live)') : "Authorize the bot's Google account";
+      if (document.activeElement.id !== 'tw-channel') set('tw-channel', s.twitchChannel);
+      if (document.activeElement.id !== 'yt-video') set('yt-video', s.youtubeVideoId);
+      document.getElementById('yt-mode').value = s.youtubeMode || 'auto'; renderYtMode();
+      document.getElementById('tw-enabled').checked = !!s.twitchEnabled;
+      document.getElementById('yt-enabled').checked = !!s.youtubeEnabled;
+      const rb = document.getElementById('run-badge');
+      rb.textContent = state.running ? (state.dryRun ? 'Running · DRY RUN' : 'Running') : 'Stopped';
+      rb.className = 'running-badge ' + (state.running ? 'on' : 'off');
+
+      // commands
+      document.getElementById('cmd-count').textContent = (state.commands||[]).length;
+      const cl = document.getElementById('cmd-list');
+      cl.innerHTML = (state.commands||[]).length ? state.commands.map(c => `
+        <div class="item">
+          <div class="top">
+            <span class="trig">${esc(c.trigger)}</span>
+            <span class="resp">${esc(c.response)}</span>
+            <input type="checkbox" class="chk" ${c.enabled?'checked':''} onchange="toggleCommand('${c.id}', this.checked)" title="Enabled">
+            <button class="btn sm ghost" onclick="editCommand('${c.id}')">Edit</button>
+            <button class="btn sm red" onclick="removeCommand('${c.id}')">Del</button>
+          </div>
+          <div class="tags">cd ${c.cooldownSec}s · user ${c.userCooldownSec}s${c.modOnly?' · mods only':''} · used ${c.count||0}×</div>
+        </div>`).join('') : '<div class="none">No commands yet</div>';
+
+      // timers
+      document.getElementById('tmr-count').textContent = (state.timers||[]).length;
+      const tl = document.getElementById('tmr-list');
+      tl.innerHTML = (state.timers||[]).length ? state.timers.map(t => `
+        <div class="item">
+          <div class="top">
+            <span class="trig">${esc(t.name)}</span>
+            <span class="resp">${esc(t.message)}</span>
+            <input type="checkbox" class="chk" ${t.enabled?'checked':''} onchange="toggleTimer('${t.id}', this.checked)" title="Enabled">
+            <button class="btn sm ghost" onclick="editTimer('${t.id}')">Edit</button>
+            <button class="btn sm red" onclick="removeTimer('${t.id}')">Del</button>
+          </div>
+          <div class="tags">every ${t.intervalSec}s · min ${t.minChatLines} chat lines</div>
+        </div>`).join('') : '<div class="none">No timers yet</div>';
+
+      // events
+      const el = document.getElementById('ev-list');
+      const labels = { twitchSub:'Twitch · New sub', twitchResub:'Twitch · Resub', twitchGiftSub:'Twitch · Gift sub', twitchRaid:'Twitch · Raid', twitchCheer:'Twitch · Cheer', youtubeNewMember:'YouTube · New member', youtubeMemberMilestone:'YouTube · Member milestone' };
+      el.innerHTML = Object.keys(state.events||{}).map(k => {
+        const e = state.events[k];
+        return `<div class="ev">
+          <div class="ev-head"><span class="ev-name">${esc(labels[k]||k)}</span><input type="checkbox" class="chk" id="evchk-${k}" ${e.enabled?'checked':''} onchange="setEvent('${k}', this.checked, document.getElementById('ev-${k}').value)"></div>
+          <div class="row"><input type="text" id="ev-${k}" class="grow" value="${esc(e.template)}"><button class="btn sm" onclick="setEvent('${k}', document.getElementById('evchk-${k}').checked, document.getElementById('ev-${k}').value)">Save</button></div>
+        </div>`;
+      }).join('');
+
+      // settings
+      if (document.activeElement.id !== 's-discord') set('s-discord', s.discordInvite);
+      if (document.activeElement.id !== 's-cd') set('s-cd', s.defaultCooldownSec);
+      if (document.activeElement.id !== 's-ucd') set('s-ucd', s.defaultUserCooldownSec);
+
+      renderLog();
+    }
+
+    function pill(id, on){ const el = document.getElementById(id); el.className = 'pill ' + (on?'on':'off'); }
+
+    function renderLog() {
+      const box = document.getElementById('log');
+      const lines = (state.log||[]).slice(-50);
+      box.innerHTML = lines.map(l => `<div class="log-line ${l.kind}"><span class="ts">${new Date(l.ts).toLocaleTimeString()}</span><span class="tx">${esc(l.text)}</span></div>`).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+    function pushLog(line) { state.log = (state.log||[]).concat(line).slice(-50); renderLog(); }
+
+    // ── SSE ──
+    function connectSSE() {
+      if (evtSource) evtSource.close();
+      evtSource = new EventSource('/api/events');
+      evtSource.onopen = () => setConn(true);
+      evtSource.onmessage = e => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'state' && msg.bot) applyState(msg.bot);
+          else if (msg.type === 'botState' && msg.bot) applyState(msg.bot);
+          else if (msg.type === 'botLog' && msg.line) pushLog(msg.line);
+        } catch (_) {}
+      };
+      evtSource.onerror = () => { setConn(false); setTimeout(connectSSE, 3000); };
+    }
+    function setConn(on){ const el = document.getElementById('conn'); el.classList.toggle('online', on); el.querySelector('.conn-label').textContent = on ? 'Online' : 'Offline'; }
+
+    async function init() {
+      try { const res = await fetch('/api/bot/state'); applyState(await res.json()); } catch (_) {}
+      connectSSE();
+      document.getElementById('test-text').addEventListener('keydown', e => { if (e.key === 'Enter') testSay(); });
+    }
+    init();
+  </script>
+</body>
+</html>

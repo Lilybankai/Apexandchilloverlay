@@ -34,11 +34,64 @@ const LMU_OVERTAKE_DEBOUNCE_MS = 5000;         // per-car cooldown so one pass f
 const LMU_STANDINGS_PATH = process.env.LMU_STANDINGS_PATH || '/rest/watch/standings';
 const LMU_SESSION_PATH = process.env.LMU_SESSION_PATH || '/rest/watch/sessionInfo';
 
+// ── Stream bot (Twitch + YouTube chat bot) ───────────────────────────────────
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''; // gate the bot admin when not on localhost
+const BOT_DRY_RUN = process.env.BOT_DRY_RUN === '1';
+const bot = require('./scripts/bot')({
+  broadcast,                                   // hoisted function declaration (defined below)
+  twitchClientId: TWITCH_CLIENT_ID,
+  twitchClientSecret: TWITCH_CLIENT_SECRET,
+  googleClientId: GOOGLE_CLIENT_ID,
+  googleClientSecret: GOOGLE_CLIENT_SECRET,
+  publicBaseUrl: PUBLIC_BASE_URL,
+  getTwitchAppToken: () => getTwitchAccessToken(),
+  dryRun: BOT_DRY_RUN,
+});
+
+// Admin gate: open on loopback (frictionless local-during-stream); otherwise
+// require ADMIN_TOKEN via X-Admin-Token header, admin_token cookie, or ?admin_token.
+function botIsLocal(req) {
+  const ip = (req.ip || '').replace('::ffff:', '');
+  return ip === '127.0.0.1' || ip === '::1';
+}
+function botCookieToken(req) {
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)admin_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function botAdminGate(req, res, next) {
+  if (!ADMIN_TOKEN) return next();
+  if (botIsLocal(req)) return next();
+  const tok = req.headers['x-admin-token'] || botCookieToken(req) || req.query.admin_token;
+  if (tok && tok === ADMIN_TOKEN) return next();
+  if (req.path === '/bot-controls.html') return res.status(401).send(botLoginPage());
+  return res.status(401).json({ ok: false, error: 'unauthorized' });
+}
+function botLoginPage() {
+  return `<!doctype html><meta charset="utf8"><title>Bot Admin · Apex &amp; Chill</title>`
+    + `<body style="font-family:system-ui;background:#06060f;color:#eaeaf5;display:grid;place-items:center;height:100vh;margin:0">`
+    + `<form onsubmit="document.cookie='admin_token='+encodeURIComponent(t.value)+';path=/;max-age=2592000';location.reload();return false" `
+    + `style="background:#0d0d22;padding:28px;border-radius:14px;border:1px solid rgba(0,212,255,.2)">`
+    + `<h3 style="margin:0 0 12px;font-family:monospace;letter-spacing:2px">BOT ADMIN</h3>`
+    + `<input id="t" type="password" placeholder="Admin token" autofocus style="padding:10px;border-radius:8px;border:1px solid #333;background:#111128;color:#fff;width:240px">`
+    + `<button style="margin-top:10px;width:100%;padding:10px;border-radius:8px;border:1px solid #00d4ff66;background:#00d4ff14;color:#00d4ff;cursor:pointer">Enter</button>`
+    + `</form></body>`;
+}
+
 // Behind nginx / Lilybank / similar — needed for correct client IPs if you log them later
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '256kb' }));
+
+// ── Bot security guards — MUST precede express.static ────────────────────────
+app.get('/data/bot-tokens.json', (_req, res) => res.status(404).end()); // never serve the token file
+app.use((req, res, next) => { if (req.path.endsWith('.tmp')) return res.status(404).end(); next(); });
+app.get('/bot-controls.html', botAdminGate, (_req, res) => res.sendFile(path.join(__dirname, 'bot-controls.html')));
+
 app.use(express.static(__dirname)); // serves overlay.html, controls.html, podium-test.glb, data/, etc.
+
 
 // ── SSE client list & server-side state ──────────────────────────────────────
 let clients     = [];
@@ -514,7 +567,7 @@ app.get('/api/events', (req, res) => {
   clients.push({ id, res });
 
   // immediately push current state so new connections sync up
-  send(res, { type: 'state', ...serverState, multistream: multistreamState });
+  send(res, { type: 'state', ...serverState, multistream: multistreamState, bot: bot.getPublicState() });
 
   req.on('close', () => {
     clients = clients.filter(c => c.id !== id);
@@ -532,6 +585,13 @@ app.get('/api/health', (_req, res) => {
     multistreamMeta: {
       youtubeApi: !!YOUTUBE_API_KEY,
       twitchApi: !!(TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET),
+    },
+    botMeta: {
+      twitchOAuth: !!(TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET),
+      googleOAuth: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+      publicBaseUrl: PUBLIC_BASE_URL,
+      adminGate: !!ADMIN_TOKEN,
+      dryRun: BOT_DRY_RUN,
     },
   });
 });
@@ -1320,6 +1380,36 @@ app.post('/api/multistream/command', async (req, res) => {
   res.json({ ok: true, multistream: multistreamState });
 });
 
+// ── Stream bot: admin API + OAuth (all admin-gated) ──────────────────────────
+app.get('/api/bot/state', botAdminGate, (_req, res) => res.json(bot.getPublicState()));
+
+app.post('/api/bot/command', botAdminGate, async (req, res) => {
+  try {
+    const { cmd, ...args } = req.body || {};
+    const state = await bot.applyCommand(cmd, args);
+    res.json({ ok: true, bot: state });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String((e && e.message) || e) });
+  }
+});
+
+app.get('/auth/twitch/login', botAdminGate, (_req, res) => {
+  if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) return res.status(400).send('TWITCH_CLIENT_ID/SECRET not configured');
+  res.redirect(bot.twitchLoginUrl());
+});
+app.get('/auth/twitch/callback', botAdminGate, async (req, res) => {
+  try { await bot.twitchCallback(req.query.code, req.query.state); res.redirect('/bot-controls.html'); }
+  catch (e) { res.status(400).send(`Twitch auth failed: ${(e && e.message) || e}`); }
+});
+app.get('/auth/google/login', botAdminGate, (_req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(400).send('GOOGLE_CLIENT_ID/SECRET not configured');
+  res.redirect(bot.googleLoginUrl());
+});
+app.get('/auth/google/callback', botAdminGate, async (req, res) => {
+  try { await bot.googleCallback(req.query.code, req.query.state); res.redirect('/bot-controls.html'); }
+  catch (e) { res.status(400).send(`YouTube auth failed: ${(e && e.message) || e}`); }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function send(res, data) {
   try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch (_) {}
@@ -1341,10 +1431,12 @@ app.use((err, _req, res, _next) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   startMsStatsPolling();
+  bot.init().then(() => bot.autoStartIfReady()).catch(err => console.error('bot init failed:', err));
   console.log('\n  Apex & Chill Standings Overlay');
   console.log('  ────────────────────────────────────────');
   console.log(`  OBS source  →  http://localhost:${PORT}/overlay.html`);
   console.log(`  Controls    →  http://localhost:${PORT}/controls.html`);
+  console.log(`  Stream bot  →  http://localhost:${PORT}/bot-controls.html`);
   console.log(`  Health      →  http://localhost:${PORT}/api/health`);
   console.log('  ────────────────────────────────────────');
   console.log('  Deploy: reverse-proxy /api/* and /api/events to this Node process.');
