@@ -44,3 +44,25 @@ Optional env vars:
   `<base>/swagger` (defaults `/rest/watch/standings` and `/rest/watch/sessionInfo`)
 - `LMU_MOCK=1` — serve `data/lmu-live-sample.json` instead of the game, for developing/styling
   the tower without LMU running
+
+### Stream chat bot (Twitch + YouTube)
+
+A chat bot with an admin panel at `bot-controls.html` (served gated — see below). Custom
+`!commands` (cooldowns, mod-only, variables), timers (periodic auto-messages, e.g. the Discord
+invite), and event auto-replies (Twitch sub/resub/gift/raid/cheer via tmi.js IRC; YouTube new
+member/milestone via live-chat polling). A dedicated bot account on each platform is authorized
+via the "Connect" buttons (OAuth). Server code lives in `scripts/bot/` (engine + adapters +
+store + oauth); state persists to `data/bot-config.json`; OAuth tokens to `data/bot-tokens.json`
+(both gitignored; the token file is also blocked from static serving).
+
+Env vars:
+- `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` — reused for the bot user-OAuth + Helix ($uptime/$game)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — YouTube Data API OAuth (scope youtube.force-ssl)
+- `PUBLIC_BASE_URL` — base used to build OAuth redirect URIs (default `http://localhost:<PORT>`);
+  register `<PUBLIC_BASE_URL>/auth/twitch/callback` and `/auth/google/callback` in the consoles
+- `ADMIN_TOKEN` — gates `/api/bot/*`, `/auth/*`, and `bot-controls.html` when NOT on localhost
+  (localhost is always allowed, so local-during-stream needs no token)
+- `BOT_DRY_RUN=1` — `say()` becomes a no-op that only logs; exercises commands/timers/events with
+  no live stream and no API quota spend
+
+Dependency: `tmi.js` (vendored in `node_modules/`, like express). YouTube uses raw fetch.

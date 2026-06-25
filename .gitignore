@@ -1,0 +1,9 @@
+.env
+
+# Note: node_modules/ is intentionally vendored in this repo (so `git pull` then
+# `npm start` works with no install step), matching how express is committed.
+
+# Stream bot — never commit OAuth tokens or runtime config
+data/bot-tokens.json
+data/bot-config.json
+*.tmp
